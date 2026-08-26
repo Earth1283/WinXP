@@ -54,6 +54,8 @@ APPS = [
             exe_name="taskmgr.exe"),
     AppSpec("wmp", "Windows Media Player", "wmp", "wmp", "WindowsMediaPlayerWindow",
             pinned=True, exe_name="wmplayer.exe", takes_node_id=True),
+    AppSpec("vscode", "Visual XP Code", "vscode", "visual_xp_code", "VisualXPCodeWindow",
+            pinned=True, exe_name="Code.exe", takes_node_id=True),
 ]
 
 BY_ID = {spec.id: spec for spec in APPS}

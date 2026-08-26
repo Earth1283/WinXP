@@ -22,8 +22,9 @@ class StartButton(QPushButton):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         r = self.rect().adjusted(1, 1, -1, -1)
         pressed = self.isDown()
-        top = QColor("#8fe36a") if not pressed else QColor("#3c8c25")
-        bot = QColor("#1a6e0a") if not pressed else QColor("#0f4d06")
+        scheme = theme.current_scheme()
+        top = QColor(scheme["start_top"]) if not pressed else QColor(scheme["start_bot"]).darker(115)
+        bot = QColor(scheme["start_bot"]) if not pressed else QColor(scheme["start_bot"]).darker(140)
         for y in range(r.height()):
             t = y / max(1, r.height() - 1)
             c = QColor(
@@ -187,8 +188,9 @@ class Taskbar(QWidget):
 
     def paintEvent(self, ev):
         p = QPainter(self)
-        top = QColor("#3f8cf3")
-        bot = QColor("#1941b8")
+        scheme = theme.current_scheme()
+        top = QColor(scheme["taskbar_top"])
+        bot = QColor(scheme["taskbar_bot"])
         for y in range(self.height()):
             t = y / max(1, self.height() - 1)
             c = QColor(

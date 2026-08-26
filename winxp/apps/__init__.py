@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from ..app_registry import BY_ID
-from ..corruption import health
+from ..corruption import guard_fs, health
+from ..settings import settings
 from ..vfs import vfs
 
 
@@ -13,8 +14,16 @@ def launch(wm, target: str):
         target = target[4:]
 
     if target.startswith("explorer:"):
+        if guard_fs(wm):
+            return None
         ref = target[len("explorer:"):]
         node_id = {"root": vfs.root_id, "mydocs": vfs.my_docs_id, "recycle": vfs.recycle_id}.get(ref, ref)
+        if vfs.get(node_id) is None:
+            # Cursed: the folder being opened (e.g. Recycle Bin) got deleted out
+            # from under us. Don't crash the whole process -- crash the "OS" instead.
+            from .bsod import crash
+            crash(wm, "explorer.exe")
+            return None
         from .explorer import ExplorerWindow
         window = ExplorerWindow(wm, node_id)
         window._app_key = "explorer"
@@ -28,6 +37,17 @@ def launch(wm, target: str):
     app_id, _, node_id = target.partition(":")
     spec = BY_ID.get(app_id)
     if spec is None:
+        return None
+
+    if not settings.is_installed(app_id):
+        # Add or Remove Programs actually removes it -- the shortcut's still
+        # there, the .exe just isn't anymore. Classic XP missing-file dialog.
+        from ..xp_dialog import XPMessageBox
+        XPMessageBox.critical(
+            None, spec.exe(),
+            f"Windows cannot find '{spec.exe()}'. Make sure you typed the name "
+            "correctly, and then try again.",
+        )
         return None
 
     window = spec.factory(wm, node_id or None)

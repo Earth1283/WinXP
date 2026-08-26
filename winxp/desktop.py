@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import random
+import time
 
-from PyQt6.QtCore import QPoint, QRect, QSize, Qt, QTimer
+from PyQt6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QTimer
 from PyQt6.QtGui import QColor, QKeySequence, QPainter, QShortcut
 from PyQt6.QtWidgets import (
-    QApplication, QInputDialog, QLabel, QMenu, QVBoxLayout, QWidget,
+    QApplication, QLabel, QLineEdit, QMenu, QVBoxLayout, QWidget,
 )
 
 from . import apps, corruption, icons, theme, vfs as vfs_mod, xp_dialog
@@ -22,11 +23,27 @@ FILE_ICONS = {
 }
 
 
+class RenameEdit(QLineEdit):
+    """Inline desktop-icon rename box — Enter/focus-out commits, Escape cancels."""
+
+    def keyPressEvent(self, ev):
+        if ev.key() == Qt.Key.Key_Escape:
+            self.parent()._cancel_rename()
+            return
+        super().keyPressEvent(ev)
+
+    def focusOutEvent(self, ev):
+        super().focusOutEvent(ev)
+        self.parent()._commit_rename()
+
+
 class DesktopIcon(QWidget):
     def __init__(self, node_id, parent):
         super().__init__(parent)
         self.node_id = node_id
         self.selected = False
+        self._editing = False
+        self._editor = None
         self.setFixedSize(ICON_CELL)
         self.setCursor(Qt.CursorShape.ArrowCursor)
 
@@ -63,7 +80,7 @@ class DesktopIcon(QWidget):
         else:
             key = FILE_ICONS.get(node.kind, "text_file")
         self.icon_label.setPixmap(icons.icon(key, 40).pixmap(40, 40))
-        self.text_label.setText(node.name)
+        self.text_label.setText(vfs_mod.display_name(node))
         self._paint_selection()
 
     def _paint_selection(self):
@@ -89,6 +106,51 @@ class DesktopIcon(QWidget):
 
     def mouseDoubleClickEvent(self, ev):
         self.window().open_node(self.node_id)
+
+    def start_rename(self):
+        node = vfs_mod.vfs.get(self.node_id)
+        if not node or self._editing:
+            return
+        self._editing = True
+        self.text_label.hide()
+        self._editor = RenameEdit(self)
+        self._editor.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self._editor.setStyleSheet(
+            "QLineEdit { background: white; color: black; font-size: 11px; "
+            "selection-background-color: #2f6fdb; selection-color: white; "
+            "border: 1px solid #0058e6; padding: 1px; }"
+        )
+        self._editor.setFixedWidth(self.width() - 8)
+        self.layout().addWidget(self._editor, 0, Qt.AlignmentFlag.AlignHCenter)
+        self._editor.setText(node.name)
+        if node.kind != vfs_mod.FOLDER and "." in node.name:
+            self._editor.setSelection(0, node.name.rfind("."))
+        else:
+            self._editor.selectAll()
+        self._editor.setFocus()
+        self._editor.returnPressed.connect(self._commit_rename)
+
+    def _commit_rename(self):
+        if not self._editing:
+            return
+        self._editing = False
+        new_name = self._editor.text().strip()
+        node = vfs_mod.vfs.get(self.node_id)
+        if new_name and node and new_name != node.name:
+            vfs_mod.vfs.rename(self.node_id, new_name)
+        self._end_rename()
+
+    def _cancel_rename(self):
+        if not self._editing:
+            return
+        self._editing = False
+        self._end_rename()
+
+    def _end_rename(self):
+        self._editor.deleteLater()
+        self._editor = None
+        self.text_label.show()
+        self.refresh()
 
 
 class Desktop(QWidget):
@@ -126,6 +188,15 @@ class Desktop(QWidget):
         self.start_menu.app_chosen.connect(self._launch)
 
         settings.wallpaper_changed.connect(self.update)
+        settings.scheme_changed.connect(self._on_scheme_changed)
+        settings.folder_options_changed.connect(self._layout_icons)
+
+        self._last_activity = time.time()
+        self._screensaver_overlay = None
+        QApplication.instance().installEventFilter(self)
+        self._idle_timer = QTimer(self)
+        self._idle_timer.timeout.connect(self._check_idle)
+        self._idle_timer.start(5000)
 
         self._layout_icons()
         self._reposition()
@@ -135,6 +206,32 @@ class Desktop(QWidget):
 
     def resizeEvent(self, ev):
         self._reposition()
+
+    _ACTIVITY_EVENTS = (
+        QEvent.Type.MouseMove, QEvent.Type.MouseButtonPress,
+        QEvent.Type.KeyPress, QEvent.Type.Wheel,
+    )
+
+    def eventFilter(self, obj, event):
+        if event.type() in self._ACTIVITY_EVENTS:
+            self._last_activity = time.time()
+        return False
+
+    def _check_idle(self):
+        if self._screensaver_overlay is not None:
+            return
+        if settings.screensaver == "(None)":
+            return
+        idle_for = time.time() - self._last_activity
+        if idle_for >= settings.screensaver_wait_minutes * 60:
+            from .apps.control_panel.screensaver import ScreenSaverOverlay
+            overlay = ScreenSaverOverlay(self._on_screensaver_dismissed)
+            self._screensaver_overlay = overlay
+            overlay.show_fullscreen_on_primary()
+
+    def _on_screensaver_dismissed(self):
+        self._screensaver_overlay = None
+        self._last_activity = time.time()
 
     def _reposition(self):
         self.icon_area.setGeometry(0, 0, self.width(), self.height() - 34)
@@ -209,6 +306,8 @@ class Desktop(QWidget):
             self.show_desktop_menu(ev.globalPosition().toPoint())
 
     def _layout_icons(self):
+        if corruption.health.is_dead("explorer.exe"):
+            return  # cursed: shell's dead, desktop is frozen -- no new files render
         selected_node = self.selected_icon.node_id if self.selected_icon is not None else None
         for w in self.icons_widgets.values():
             w.deleteLater()
@@ -216,7 +315,8 @@ class Desktop(QWidget):
         self.selected_icon = None
 
         children = sorted(
-            vfs_mod.vfs.children_of(vfs_mod.vfs.desktop_id),
+            (n for n in vfs_mod.vfs.children_of(vfs_mod.vfs.desktop_id)
+             if not n.hidden or settings.show_hidden),
             key=lambda n: n.created,
         )
         margin = 10
@@ -240,6 +340,8 @@ class Desktop(QWidget):
             widget.set_selected(True)
 
     def open_node(self, node_id):
+        if corruption.guard_fs(self.wm):
+            return
         node = vfs_mod.vfs.get(node_id)
         if not node:
             return
@@ -266,6 +368,13 @@ class Desktop(QWidget):
                 return
         self._launch("task_manager")
 
+    def _on_scheme_changed(self):
+        self.taskbar.update()
+        self.taskbar.start_btn.update()
+        self.start_menu.refresh_scheme()
+        for window in self.wm.windows:
+            window.titlebar.update()
+
     def show_icon_menu(self, node_id, global_pos):
         node = vfs_mod.vfs.get(node_id)
         menu = QMenu(self)
@@ -276,7 +385,17 @@ class Desktop(QWidget):
         rename_act.triggered.connect(lambda: self._rename_icon(node_id))
         delete_act = menu.addAction("Delete")
         delete_act.triggered.connect(lambda: self._delete_icon(node_id))
+        menu.addSeparator()
+        props_act = menu.addAction("Properties")
+        props_act.triggered.connect(lambda: self._show_icon_properties(node_id))
         menu.exec(global_pos)
+
+    def _show_icon_properties(self, node_id):
+        if corruption.guard_fs(self.wm):
+            return
+        from .properties_dialog import PropertiesDialog
+        PropertiesDialog.show_for(self, node_id)
+        self._layout_icons()
 
     def show_desktop_menu(self, global_pos):
         menu = QMenu(self)
@@ -296,14 +415,20 @@ class Desktop(QWidget):
         menu.exec(global_pos)
 
     def _new_folder(self):
+        if corruption.guard_fs(self.wm):
+            return
         vfs_mod.vfs.create_folder(vfs_mod.vfs.desktop_id)
         self._layout_icons()
 
     def _new_text(self):
+        if corruption.guard_fs(self.wm):
+            return
         vfs_mod.vfs.create_text_file(vfs_mod.vfs.desktop_id)
         self._layout_icons()
 
     def _new_image(self):
+        if corruption.guard_fs(self.wm):
+            return
         from . import image_codec
         vfs_mod.vfs.create_image_file(
             vfs_mod.vfs.desktop_id, data=image_codec.to_bytes(image_codec.blank())
@@ -311,19 +436,30 @@ class Desktop(QWidget):
         self._layout_icons()
 
     def _rename_icon(self, node_id):
-        node = vfs_mod.vfs.get(node_id)
-        name, ok = QInputDialog.getText(self, "Rename", "New name:", text=node.name)
-        if ok and name.strip():
-            vfs_mod.vfs.rename(node_id, name.strip())
-            self._layout_icons()
+        if corruption.guard_fs(self.wm):
+            return
+        widget = self.icons_widgets.get(node_id)
+        if widget:
+            widget.start_rename()
 
     def _delete_icon(self, node_id):
+        if corruption.guard_fs(self.wm):
+            return
         node = vfs_mod.vfs.get(node_id)
+        if node.read_only:
+            xp_dialog.XPMessageBox.critical(
+                self, "Confirm File Delete",
+                f"Cannot delete '{node.name}': it is Read-only.\n\n"
+                "Clear the Read-only attribute from its Properties first."
+            )
+            return
         if xp_dialog.XPMessageBox.confirm(self, "Confirm Delete", f"Delete '{node.name}'?"):
             if node.kind == vfs_mod.SHORTCUT:
                 vfs_mod.vfs.delete(node_id, permanent=True)
             else:
                 vfs_mod.vfs.delete(node_id)
+            if corruption.guard_system_file(self.wm, node):
+                return
             self._layout_icons()
 
     def _toggle_start(self):

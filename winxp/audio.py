@@ -7,7 +7,7 @@ import os
 
 from PyQt6.QtCore import QUrl
 
-from .settings import settings
+from .settings import SOUND_SCHEMES, settings
 
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
 
@@ -37,7 +37,11 @@ class SoundManager:
         self._output.setVolume(settings.volume / 100)
 
     def play(self, key):
-        path = SOUNDS.get(key)
+        scheme = SOUND_SCHEMES.get(settings.sound_scheme, {})
+        mapped = scheme.get(key, key) if key in scheme else key
+        if mapped is None:
+            return
+        path = SOUNDS.get(mapped)
         if not path or not os.path.exists(path):
             return
         self._ensure()

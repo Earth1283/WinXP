@@ -71,6 +71,20 @@ def _draw(name: str, size: int) -> QPixmap:
         _draw_logoff(p, s)
     elif name == "task_manager":
         _draw_task_manager(p, s)
+    elif name == "vscode":
+        _draw_vscode(p, s)
+    elif name == "cp_display":
+        _draw_cp_display(p, s)
+    elif name == "cp_appearance":
+        _draw_cp_appearance(p, s)
+    elif name == "cp_programs":
+        _draw_cp_programs(p, s)
+    elif name == "cp_screensaver":
+        _draw_cp_screensaver(p, s)
+    elif name == "cp_system":
+        _draw_cp_system(p, s)
+    elif name == "cp_folder_options":
+        _draw_cp_folder_options(p, s)
     elif name == "msg_warning":
         _draw_msg_warning(p, s)
     elif name == "msg_error":
@@ -249,6 +263,110 @@ def _draw_calculator(p, s):
             bx = r.left() + 4 + col * (bw + 1)
             by = btn_top + row * (bh + 2)
             p.drawRoundedRect(QRectF(bx, by, bw, bh), 1, 1)
+
+
+def _draw_vscode(p, s):
+    r = QRectF(s * 0.06, s * 0.06, s * 0.88, s * 0.88)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(_grad(r, "#1f9cf0", "#0058c8"))
+    p.drawRoundedRect(r, s * 0.16, s * 0.16)
+    p.setPen(QPen(QColor("white"), max(1, s * 0.09), Qt.PenStyle.SolidLine,
+                  Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    # "<" chevron
+    p.drawPolyline(QPolygon([
+        QPoint(int(s * 0.46), int(s * 0.28)),
+        QPoint(int(s * 0.26), int(s * 0.5)),
+        QPoint(int(s * 0.46), int(s * 0.72)),
+    ]))
+    # ">" chevron
+    p.drawPolyline(QPolygon([
+        QPoint(int(s * 0.54), int(s * 0.28)),
+        QPoint(int(s * 0.74), int(s * 0.5)),
+        QPoint(int(s * 0.54), int(s * 0.72)),
+    ]))
+
+
+def _draw_cp_display(p, s):
+    r = QRectF(s * 0.08, s * 0.10, s * 0.84, s * 0.60)
+    p.setPen(QPen(QColor("#444"), 1))
+    p.setBrush(QColor("#2a2a2a"))
+    p.drawRoundedRect(r, 3, 3)
+    screen = r.adjusted(4, 4, -4, -4)
+    p.setBrush(_grad(screen, "#3a6ea5", "#1a4a80"))
+    p.drawRect(screen)
+    p.setBrush(QColor("#888"))
+    p.setPen(Qt.PenStyle.NoPen)
+    p.drawRect(QRectF(s * 0.42, r.bottom(), s * 0.16, s * 0.10))
+    p.drawRoundedRect(QRectF(s * 0.22, r.bottom() + s * 0.08, s * 0.56, s * 0.08), 2, 2)
+
+
+def _draw_cp_appearance(p, s):
+    swatches = ["#e35c5c", "#5c9ee3", "#e3c95c", "#5ce38f"]
+    half = s * 0.42
+    for i, c in enumerate(swatches):
+        cx = s * 0.08 + (i % 2) * half
+        cy = s * 0.08 + (i // 2) * half
+        p.setPen(QPen(QColor("#555"), 1))
+        p.setBrush(QColor(c))
+        p.drawRoundedRect(QRectF(cx, cy, half - s * 0.04, half - s * 0.04), 3, 3)
+
+
+def _draw_cp_programs(p, s):
+    r = QRectF(s * 0.14, s * 0.10, s * 0.72, s * 0.60)
+    p.setPen(QPen(QColor("#555"), 1))
+    p.setBrush(_grad(r, "#f0d878", "#c8a020"))
+    p.drawRect(r)
+    p.setPen(QPen(QColor("#8a6a10"), 1))
+    p.drawLine(int(r.left()), int(r.top() + r.height() / 2), int(r.right()), int(r.top() + r.height() / 2))
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor("#3fa129"))
+    cx, cy, rad = s * 0.5, s * 0.82, s * 0.14
+    p.drawEllipse(QRectF(cx - rad, cy - rad, rad * 2, rad * 2))
+    p.setPen(QPen(QColor("white"), max(1, s * 0.045)))
+    p.drawLine(int(cx - rad * 0.4), int(cy), int(cx + rad * 0.4), int(cy))
+    p.drawLine(int(cx), int(cy - rad * 0.4), int(cx), int(cy + rad * 0.4))
+
+
+def _draw_cp_screensaver(p, s):
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor("#0a1a3a"))
+    p.drawRoundedRect(QRectF(s * 0.06, s * 0.10, s * 0.88, s * 0.68), 4, 4)
+    p.setBrush(QColor("#ffe89a"))
+    moon_r = s * 0.16
+    p.drawEllipse(QRectF(s * 0.6, s * 0.2, moon_r * 2, moon_r * 2))
+    p.setBrush(QColor("#0a1a3a"))
+    p.drawEllipse(QRectF(s * 0.66, s * 0.2, moon_r * 2, moon_r * 2))
+    p.setBrush(QColor("white"))
+    for x, y, r in [(0.18, 0.28, 0.02), (0.28, 0.45, 0.015), (0.14, 0.55, 0.018)]:
+        p.drawEllipse(QRectF(s * x, s * y, s * r * 2, s * r * 2))
+
+
+def _draw_cp_system(p, s):
+    r = QRectF(s * 0.14, s * 0.14, s * 0.72, s * 0.72)
+    p.setPen(QPen(QColor("#555"), 1))
+    p.setBrush(QColor("#c8c4b0"))
+    p.drawRoundedRect(r, 3, 3)
+    inner = r.adjusted(s * 0.14, s * 0.14, -s * 0.14, -s * 0.14)
+    p.setBrush(QColor("#3a9e5f"))
+    p.drawRect(inner)
+    p.setPen(QPen(QColor("#c8c4b0"), max(1, s * 0.035)))
+    for i in range(3):
+        off = inner.height() * (i + 1) / 4
+        p.drawLine(int(r.left()), int(inner.top() + off), int(inner.left()), int(inner.top() + off))
+        p.drawLine(int(inner.right()), int(inner.top() + off), int(r.right()), int(inner.top() + off))
+
+
+def _draw_cp_folder_options(p, s):
+    _draw_folder(p, s)
+    cx, cy, rad = s * 0.72, s * 0.7, s * 0.22
+    p.setPen(QPen(QColor("#444"), 1))
+    p.setBrush(QColor("#e4e4e4"))
+    p.drawEllipse(QRectF(cx - rad, cy - rad, rad * 2, rad * 2))
+    p.setPen(QPen(QColor("#444"), max(1, s * 0.035)))
+    p.drawLine(int(cx - rad * 0.4), int(cy), int(cx + rad * 0.4), int(cy))
+    p.drawLine(int(cx - rad * 0.15), int(cy - rad * 0.35), int(cx - rad * 0.4), int(cy))
+    p.drawLine(int(cx - rad * 0.15), int(cy + rad * 0.35), int(cx - rad * 0.4), int(cy))
 
 
 def _draw_control_panel(p, s):

@@ -26,6 +26,11 @@ PAGES = {
         <li><a href="http://xphome.local/">Set your homepage to XP Home</a></li>
         <li><a href="http://www.example.com/">Visit Example.com</a></li>
         <li><a href="http://www.google.com/">Search the web with Google</a></li>
+        <li><a href="http://www.apple.com/">Apple.com</a> -- 1,000 songs. In your pocket.</li>
+        <li><a href="http://www.wikipedia.org/">Wikipedia, the free encyclopedia</a></li>
+        <li><a href="http://www.macrohard.com/">MacroHard Corporation</a> -- Where do you want to
+        go embarrassingly overboard today?</li>
+        <li><a href="http://www.geocities.local/xp_fan_page/">Visit Steve's Windows XP Fan Page!</a></li>
         <li><a href="http://xphome.local/changelog.html">What's new in Windows XP</a></li>
         </ul>
         </div>
@@ -82,11 +87,21 @@ PAGES = {
     "http://www.google.com/": (
         "Google",
         """
-        <body style="font-family: Tahoma; text-align:center; padding-top:80px;">
+        <body style="font-family: Tahoma; text-align:center; padding-top:60px;">
         <h1 style="font-size:52px;"><span style="color:#4285F4;">G</span><span style="color:#EA4335;">o</span>
         <span style="color:#FBBC05;">o</span><span style="color:#4285F4;">g</span>
         <span style="color:#34A853;">l</span><span style="color:#EA4335;">e</span></h1>
         <p style="color:#888;">About 4,150,000,000 results (0.42 seconds)</p>
+        <div style="text-align:left; width:420px; margin:20px auto;">
+        <p><a href="http://www.apple.com/">Apple</a><br>
+        <span style="color:green;">www.apple.com/</span> -- 1,000 songs. In your pocket.</p>
+        <p><a href="http://www.wikipedia.org/">Wikipedia, the free encyclopedia</a><br>
+        <span style="color:green;">www.wikipedia.org/</span></p>
+        <p><a href="http://www.macrohard.com/">MacroHard Corporation - Home</a><br>
+        <span style="color:green;">www.macrohard.com/</span></p>
+        <p><a href="http://www.example.com/">Example Domain</a><br>
+        <span style="color:green;">www.example.com/</span></p>
+        </div>
         <p><a href="http://www.msn.com/">Back to MSN</a></p>
         </body>
         """,
@@ -98,6 +113,89 @@ PAGES = {
         <h1>Example Domain</h1>
         <p>This domain is for use in illustrative examples inside documents.</p>
         <p><a href="http://www.msn.com/">Back to MSN</a></p>
+        </body>
+        """,
+    ),
+    "http://www.apple.com/": (
+        "Apple",
+        """
+        <body style="font-family: Tahoma; background:#ffffff; margin:0; text-align:center;">
+        <div style="background:#f4f4f4; padding:8px; font-size:11px; color:#555;">
+        Store &nbsp;|&nbsp; Mac &nbsp;|&nbsp; iPod &nbsp;|&nbsp; QuickTime &nbsp;|&nbsp; Support
+        </div>
+        <div style="padding:60px 20px;">
+        <h1 style="font-size:40px; margin-bottom:4px;">iPod</h1>
+        <p style="font-size:20px; color:#444; margin-top:0;">1,000 songs. In your pocket.</p>
+        <div style="width:120px; height:200px; background:#e5e5e5; border:2px solid #ccc;
+        border-radius:14px; margin:20px auto;"></div>
+        <p style="font-size:12px; color:#888;">Requires a Mac. Or a PC. We're flexible now.</p>
+        </div>
+        <p><a href="http://www.msn.com/">Back to MSN</a></p>
+        </body>
+        """,
+    ),
+    "http://www.wikipedia.org/": (
+        "Wikipedia, the free encyclopedia",
+        """
+        <body style="font-family: Georgia, serif; background:#ffffff; margin:0;">
+        <div style="background:#f0f0f0; padding:10px 20px; border-bottom:1px solid #ccc;">
+        <span style="font-size:22px; font-weight:bold;">Wikipedia</span>
+        <span style="font-size:11px; color:#555;"> &nbsp;The Free Encyclopedia</span>
+        </div>
+        <div style="padding:20px;">
+        <h3>From today's featured article</h3>
+        <p>The <b>Luna</b> visual style is the default theme of Windows XP, characterized by
+        rounded window corners, drop shadows, and a blue taskbar. It replaced the
+        Windows Classic theme used since Windows 95. <i>(Full article...)</i></p>
+        <h3>Did you know...</h3>
+        <ul>
+        <li>...that ending <b>csrss.exe</b> in Task Manager will crash the entire operating system?</li>
+        <li>...that the Recycle Bin can, in fact, be deleted?</li>
+        </ul>
+        <p><a href="http://www.msn.com/">Back to MSN</a></p>
+        </div>
+        </body>
+        """,
+    ),
+    "http://www.macrohard.com/": (
+        "MacroHard Corporation",
+        """
+        <body style="font-family: Tahoma; background:#ffffff; margin:0;">
+        <div style="background:#2d5c1f; padding:14px 20px;">
+        <span style="color:white; font-size:24px; font-weight:bold;">MacroHard</span>
+        <span style="color:#c8e6b8; font-size:12px;"> &nbsp;Corporation</span>
+        </div>
+        <div style="padding:20px;">
+        <h2>Where do you want to go embarrassingly overboard today?</h2>
+        <ul>
+        <li>MacroHard Office XXL -- now with 4 paperclip assistants</li>
+        <li>MacroHard Bob 2: Bob Harder</li>
+        <li>MacroHard Windows ME2 -- Millennium Edition Two</li>
+        <li>Clippy Enterprise Edition -- "It looks like you're writing a resignation letter."</li>
+        </ul>
+        <p style="color:#888; font-size:11px;">Not affiliated with any other software company,
+        real or imagined.</p>
+        <p><a href="http://www.msn.com/">Back to MSN</a></p>
+        </div>
+        </body>
+        """,
+    ),
+    "http://www.geocities.local/xp_fan_page/": (
+        "Steve's Windows XP Fan Page",
+        """
+        <body style="font-family: Comic Sans MS, Tahoma; background:#000080; color:#00ff00; margin:0; padding:20px;">
+        <h1 style="color:#ffff00; text-align:center;">*~*~* WELCOME TO STEVE'S WINDOWS XP FAN PAGE *~*~*</h1>
+        <p style="text-align:center; color:#ff00ff;">[ UNDER CONSTRUCTION -- BEST VIEWED AT 800x600 ]</p>
+        <hr>
+        <p>Hi and welcome!!! This site is dedicated 2 the best OS ever made, Windows XP!!!
+        Luna theme 4 life. Sign my guestbook plz.</p>
+        <p>Cool links:</p>
+        <ul>
+        <li><a href="http://www.msn.com/">MSN.com</a></li>
+        <li><a href="http://xphome.local/changelog.html">XP Update History</a></li>
+        </ul>
+        <p style="color:#ffff00;">You are visitor number: <b>001337</b></p>
+        <p style="text-align:center; color:#ff00ff;">Site last updated: never</p>
         </body>
         """,
     ),

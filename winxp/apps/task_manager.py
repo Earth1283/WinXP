@@ -306,7 +306,9 @@ class TaskManagerWindow(XPWindow):
         if not proceed:
             return
 
-        if info["window"] is not None:
+        if name == "explorer.exe":
+            self._kill_explorer()
+        elif info["window"] is not None:
             info["window"].close()
         elif name == "System":
             from .bsod import crash
@@ -330,6 +332,23 @@ class TaskManagerWindow(XPWindow):
 
         self._refresh_processes()
         self._refresh_apps()
+
+    def _kill_explorer(self):
+        """Cursed: explorer.exe IS the shell. Killing it closes every open
+        Explorer window, freezes the desktop's icon rendering in place, and
+        turns any further filesystem operation into a BSOD -- see
+        corruption.guard_fs(), called from desktop.py and apps/explorer.py."""
+        from ..corruption import health
+        health.kill("explorer.exe")
+        for window in list(self.wm.windows):
+            if getattr(window, "_app_key", None) == "explorer":
+                window.close()
+        XPMessageBox.critical(
+            self, "Windows Explorer",
+            "Windows Explorer has stopped working.\n\n"
+            "The desktop will no longer show new files, and opening folders "
+            "or performing file operations may crash the system."
+        )
 
     # -- Performance --------------------------------------------------------
     def _build_performance_tab(self):

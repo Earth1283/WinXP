@@ -113,9 +113,10 @@ class TitleBar(QWidget):
                 p.drawLine(0, y, self.width(), y)
             return
         active = self.window_.is_active
-        grad_top = QColor("#0a58f2") if active else QColor("#8296b8")
-        grad_mid = QColor("#3f8cf6") if active else QColor("#94a8c9")
-        grad_bot = QColor("#0058e6") if active else QColor("#7f93b5")
+        scheme = theme.current_scheme()
+        grad_top = QColor(scheme["title_top"]) if active else QColor("#8296b8")
+        grad_mid = QColor(scheme["title_mid"]) if active else QColor("#94a8c9")
+        grad_bot = QColor(scheme["title_bot"]) if active else QColor("#7f93b5")
         for y in range(self.height()):
             t = y / max(1, self.height() - 1)
             if t < 0.5:

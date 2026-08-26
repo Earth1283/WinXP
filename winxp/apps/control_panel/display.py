@@ -6,8 +6,8 @@ from PyQt6.QtWidgets import (
     QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget,
 )
 
-from ..settings import WALLPAPERS, settings
-from ..window_manager import XPWindow
+from ...settings import WALLPAPERS, settings
+from ...window_manager import XPWindow
 
 
 class Preview(QWidget):
@@ -39,9 +39,9 @@ class Preview(QWidget):
         p.fillRect(0, monitor.bottom(), self.width(), 20, QColor("#888"))
 
 
-class ControlPanelWindow(XPWindow):
+class DisplayWindow(XPWindow):
     def __init__(self, wm):
-        super().__init__(wm, title="Display Properties", icon_key="control_panel",
+        super().__init__(wm, title="Display Properties", icon_key="cp_display",
                           size=QSize(480, 360), resizable=False)
 
         root = QVBoxLayout()

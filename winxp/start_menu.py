@@ -3,8 +3,9 @@ from __future__ import annotations
 from PyQt6.QtCore import QPoint, QSize, Qt, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMenu, QPushButton, QVBoxLayout, QWidget
 
-from . import icons
+from . import icons, theme
 from .app_registry import APPS
+from .settings import settings
 
 
 class StartMenuItem(QPushButton):
@@ -42,17 +43,38 @@ class StartMenu(QWidget):
         self.setFixedSize(380, 480)
         self._build()
 
+    def _style_header(self):
+        scheme = theme.current_scheme()
+        self.header.setStyleSheet(
+            "background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            f"stop:0 {scheme['header_left']}, stop:1 {scheme['header_right']}); "
+            "border-top-left-radius: 8px; border-top-right-radius: 8px;"
+        )
+
+    def refresh_scheme(self):
+        self._style_header()
+
+    def _rebuild_pinned(self):
+        while self.pinned_l.count():
+            item = self.pinned_l.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+        for spec in APPS:
+            if not spec.pinned or not settings.is_installed(spec.id):
+                continue
+            btn = StartMenuItem(spec.title, spec.icon, size=28)
+            btn.clicked.connect(lambda _, a=spec.id: self._choose(a))
+            self.pinned_l.addWidget(btn)
+
     def _build(self):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        header = QWidget()
+        self.header = header = QWidget()
         header.setFixedHeight(60)
-        header.setStyleSheet(
-            "background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
-            "stop:0 #1657d6, stop:1 #3f8cf6); border-top-left-radius: 8px; border-top-right-radius: 8px;"
-        )
+        self._style_header()
         hl = QHBoxLayout(header)
         hl.setContentsMargins(10, 8, 10, 8)
         avatar = QLabel()
@@ -78,12 +100,12 @@ class StartMenu(QWidget):
         left_l.setContentsMargins(6, 8, 6, 8)
         left_l.setSpacing(2)
 
-        for spec in APPS:
-            if not spec.pinned:
-                continue
-            btn = StartMenuItem(spec.title, spec.icon, size=28)
-            btn.clicked.connect(lambda _, a=spec.id: self._choose(a))
-            left_l.addWidget(btn)
+        self.pinned_holder = QWidget()
+        self.pinned_l = QVBoxLayout(self.pinned_holder)
+        self.pinned_l.setContentsMargins(0, 0, 0, 0)
+        self.pinned_l.setSpacing(2)
+        self._rebuild_pinned()
+        left_l.addWidget(self.pinned_holder)
 
         left_l.addStretch(1)
         sep = QWidget()
@@ -139,7 +161,7 @@ class StartMenu(QWidget):
         )
         seen_unpinned = False
         for spec in APPS:
-            if not spec.all_programs:
+            if not spec.all_programs or not settings.is_installed(spec.id):
                 continue
             if not spec.pinned and not seen_unpinned:
                 menu.addSeparator()
@@ -154,6 +176,7 @@ class StartMenu(QWidget):
         self.app_chosen.emit(app_id)
 
     def show_above(self, anchor_widget):
+        self._rebuild_pinned()
         pos = anchor_widget.mapToGlobal(QPoint(0, 0))
         self.move(pos.x(), pos.y() - self.height())
         self.show()

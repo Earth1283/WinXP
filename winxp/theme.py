@@ -17,6 +17,47 @@ XP_LINK_BLUE = "#0000ee"
 
 FONT_FAMILY = "Tahoma"
 
+# "Appearance" schemes -- real XP shipped Blue/Olive Green/Silver. Anything
+# that paints chrome (titlebar, taskbar, start button, start menu header)
+# should read colors via current_scheme() at paint time, not import these
+# as constants, so switching schemes repaints live without rebuilding windows.
+SCHEMES = {
+    "Windows XP (Blue)": dict(
+        title_top="#0a58f2", title_mid="#3f8cf6", title_bot="#0058e6",
+        taskbar_top="#3f8cf3", taskbar_bot="#1941b8",
+        start_top="#8fe36a", start_bot="#1a6e0a",
+        header_left="#1657d6", header_right="#3f8cf6",
+    ),
+    "Olive Green": dict(
+        title_top="#8ba33f", title_mid="#a9c05a", title_bot="#6e8a2c",
+        taskbar_top="#a9c05a", taskbar_bot="#5c7a1f",
+        start_top="#c9dc7a", start_bot="#6e8a2c",
+        header_left="#5c7a1f", header_right="#a9c05a",
+    ),
+    "Silver": dict(
+        title_top="#8592a8", title_mid="#a4b0c4", title_bot="#6e7b91",
+        taskbar_top="#a4b0c4", taskbar_bot="#5f6c80",
+        start_top="#c3cbd8", start_bot="#6e7b91",
+        header_left="#5f6c80", header_right="#a4b0c4",
+    ),
+}
+
+_current_scheme_name = "Windows XP (Blue)"
+
+
+def set_scheme(name: str):
+    global _current_scheme_name
+    if name in SCHEMES:
+        _current_scheme_name = name
+
+
+def current_scheme_name() -> str:
+    return _current_scheme_name
+
+
+def current_scheme() -> dict:
+    return SCHEMES[_current_scheme_name]
+
 TITLEBAR_ACTIVE_GRADIENT = f"""
     qlineargradient(x1:0, y1:0, x2:0, y2:1,
         stop:0 #0a58f2, stop:0.5 #3f8cf6, stop:1 #0058e6)

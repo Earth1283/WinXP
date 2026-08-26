@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -31,6 +32,57 @@ VIDEO = "video"        # Media Player clip (extension varies per imported file)
 SHORTCUT = "shortcut"  # desktop shortcut to an app
 
 CONTENT_EXT = {TEXT: ".txt", RICH: ".html", IMAGE: ".png"}
+EXTENSIONED_KINDS = (TEXT, RICH, IMAGE, AUDIO, VIDEO)
+
+# Fake C:\WINDOWS\system32 -- real, read-only nodes. Read-only blocks delete
+# in desktop.py/explorer.py until Properties clears the attribute; if the
+# name matches corruption.SYSTEM32_STOP_MAP, deleting it for real BSODs
+# instead of just... deleting a file, same as real Windows would never let
+# you do this quietly either.
+SYSTEM32_SEED_FILES = {
+    "ntoskrnl.exe": "Windows NT kernel executive. Do not delete.",
+    "hal.dll": "Hardware Abstraction Layer. Do not delete.",
+    "kernel32.dll": "Windows NT BASE API Client DLL. Do not delete.",
+    "ntdll.dll": "NT Layer DLL. Do not delete.",
+    "win32k.sys": "Multi-User Win32 Driver. Do not delete.",
+    "csrss.exe": "Client Server Runtime Process. Do not delete.",
+    "winlogon.exe": "Windows Logon Application. Do not delete.",
+    "smss.exe": "Windows Session Manager. Do not delete.",
+    "services.exe": "Services and Controller app. Do not delete.",
+    "lsass.exe": "LSA Shell (Export Version). Do not delete.",
+    "explorer.exe": "Windows Explorer. Do not delete.",
+}
+
+# Harmless clutter: real Windows XP DLL/EXE names, no entry in
+# corruption.SYSTEM32_STOP_MAP, so deleting one (after clearing Read-only,
+# same as anything else in here) just... deletes it. No BSOD. A random subset
+# gets seeded each fresh install so system32 doesn't look identical between
+# installs, same as a real one never quite matches another.
+DECOY_SYSTEM32_POOL = [
+    "user32.dll", "gdi32.dll", "shell32.dll", "advapi32.dll", "comctl32.dll",
+    "ole32.dll", "oleaut32.dll", "rpcrt4.dll", "shlwapi.dll", "wininet.dll",
+    "urlmon.dll", "crypt32.dll", "setupapi.dll", "imm32.dll", "version.dll",
+    "netapi32.dll", "mswsock.dll", "ws2_32.dll", "dnsapi.dll", "iphlpapi.dll",
+    "psapi.dll", "userenv.dll", "wintrust.dll", "msvcrt.dll", "msvcp71.dll",
+    "msvcr71.dll", "gdiplus.dll", "d3d9.dll", "dsound.dll", "winmm.dll",
+    "comdlg32.dll", "credui.dll", "cryptui.dll", "dbghelp.dll", "dhcpcsvc.dll",
+    "faultrep.dll", "gpapi.dll", "hnetcfg.dll", "iertutil.dll", "lz32.dll",
+    "mpr.dll", "msacm32.dll", "mstask.dll", "netshell.dll", "ntmarta.dll",
+    "odbc32.dll", "powrprof.dll", "printui.dll", "secur32.dll", "sensapi.dll",
+    "shdocvw.dll", "shfolder.dll", "srvcli.dll", "wintab32.dll", "wldap32.dll",
+    "wshtcpip.dll", "wsock32.dll", "wtsapi32.dll", "xpsp2res.dll", "cmd.exe",
+    "taskkill.exe", "tasklist.exe", "sc.exe", "reg.exe", "regsvr32.exe",
+]
+
+
+def display_name(node) -> str:
+    """Folder Options' "Hide extensions for known file types" -- cosmetic
+    only, the real name (with extension) is untouched on disk."""
+    from .settings import settings
+    if settings.show_extensions or node.kind not in EXTENSIONED_KINDS:
+        return node.name
+    stem, dot, ext = node.name.rpartition(".")
+    return stem if dot else node.name
 
 
 @dataclass
@@ -45,17 +97,22 @@ class Node:
     ext: str = ""                                      # content file extension override (AUDIO)
     created: float = field(default_factory=time.time)
     modified: float = field(default_factory=time.time)
+    hidden: bool = False                                # Properties/Folder Options "Hidden" attribute
+    read_only: bool = False                             # Properties "Read-only" attribute (metadata only)
 
     def to_dict(self):
         return dict(
             id=self.id, name=self.name, kind=self.kind, parent=self.parent,
             children=list(self.children), icon=self.icon, target=self.target,
             ext=self.ext, created=self.created, modified=self.modified,
+            hidden=self.hidden, read_only=self.read_only,
         )
 
     @staticmethod
     def from_dict(d):
         d.setdefault("ext", "")
+        d.setdefault("hidden", False)
+        d.setdefault("read_only", False)
         return Node(**d)
 
 
@@ -74,6 +131,7 @@ class VFS:
         self.my_docs_id: str = ""
         self.my_music_id: str = ""
         self.recycle_id: str = ""
+        self.system32_id: str = ""
 
     # -- bootstrap ---------------------------------------------------
     def load_or_init(self):
@@ -107,6 +165,8 @@ class VFS:
         self.recycle_id = recycle.id
         desktop.children.append(recycle.id)
 
+        self._seed_system32(root)
+
         readme = self._new(TEXT, "Welcome.txt", my_docs.id)
         my_docs.children.append(readme.id)
         self.write_content(readme.id, (
@@ -130,6 +190,36 @@ class VFS:
 
         self._seed_sample_media()
 
+    def _seed_system32(self, root):
+        # The containers are protected too, same as the files inside --
+        # deleting "WINDOWS" wholesale is worse than deleting one file, not
+        # a free pass around the read-only gate. See corruption.SYSTEM32_STOP_MAP.
+        local_disk = self._new(FOLDER, "Local Disk (C:)", root.id)
+        local_disk.read_only = True
+        root.children.append(local_disk.id)
+        windows = self._new(FOLDER, "WINDOWS", local_disk.id)
+        windows.read_only = True
+        local_disk.children.append(windows.id)
+        system32 = self._new(FOLDER, "system32", windows.id)
+        system32.read_only = True
+        windows.children.append(system32.id)
+        self.system32_id = system32.id
+        for fname, content in SYSTEM32_SEED_FILES.items():
+            f = self._new(TEXT, fname, system32.id)
+            f.read_only = True
+            system32.children.append(f.id)
+            self.write_content(f.id, content)
+
+        existing = {system32_child_name for system32_child_name in
+                    (self.get(c).name for c in system32.children)}
+        pool = [n for n in DECOY_SYSTEM32_POOL if n not in existing]
+        for fname in random.sample(pool, k=min(len(pool), random.randint(20, 35))):
+            f = self._new(TEXT, fname, system32.id)
+            f.read_only = True
+            system32.children.append(f.id)
+            version = f"{random.randint(5,6)}.{random.randint(0,3)}.{random.randint(2600,3790)}.{random.randint(0,9999)}"
+            self.write_content(f.id, f"{fname}\r\nFile version: {version}\r\nMicrosoft Corporation")
+
     def _new(self, kind, name, parent, icon="", target="", ext=""):
         node = Node(id=str(uuid.uuid4())[:8], name=name, kind=kind,
                     parent=parent, icon=icon, target=target, ext=ext)
@@ -145,6 +235,7 @@ class VFS:
             "my_docs_id": self.my_docs_id,
             "my_music_id": self.my_music_id,
             "recycle_id": self.recycle_id,
+            "system32_id": self.system32_id,
             "nodes": {k: v.to_dict() for k, v in self.nodes.items()},
         }
         tmp = STORE_PATH + ".tmp"
@@ -160,6 +251,7 @@ class VFS:
         self.my_docs_id = data["my_docs_id"]
         self.my_music_id = data.get("my_music_id", "")
         self.recycle_id = data["recycle_id"]
+        self.system32_id = data.get("system32_id", "")
         self.nodes = {}
         migrated = False
         for k, v in data["nodes"].items():
@@ -174,6 +266,10 @@ class VFS:
             music = self._new(FOLDER, "My Music", self.desktop_id)
             self.my_music_id = music.id
             self.get(self.desktop_id).children.append(music.id)
+            migrated = True
+        if not self.system32_id or self.get(self.system32_id) is None:
+            # migrating from a version without C:\WINDOWS\system32
+            self._seed_system32(self.get(self.root_id))
             migrated = True
         if migrated:
             self.save()
@@ -333,13 +429,27 @@ class VFS:
             node.modified = time.time()
             self.save()
 
+    def set_attributes(self, node_id, hidden=None, read_only=None):
+        node = self.get(node_id)
+        if not node:
+            return
+        if hidden is not None:
+            node.hidden = bool(hidden)
+        if read_only is not None:
+            node.read_only = bool(read_only)
+        self.save()
+
     def delete(self, node_id, permanent=False):
         node = self.get(node_id)
         if not node:
             return
-        if not permanent and node.parent != self.recycle_id and node_id != self.recycle_id:
+        recycle_exists = self.get(self.recycle_id) is not None
+        if (not permanent and recycle_exists
+                and node.parent != self.recycle_id and node_id != self.recycle_id):
             self.move(node_id, self.recycle_id)
             return
+        # No Recycle Bin to move it to (cursed: the bin itself got deleted) --
+        # force a real, permanent delete instead of crashing on a missing parent.
         parent = self.get(node.parent) if node.parent else None
         if parent and node_id in parent.children:
             parent.children.remove(node_id)
