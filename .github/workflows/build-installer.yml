@@ -1,21 +1,10 @@
 name: Build Installer
 
-# Compiles installer/ (the standalone Windows XP Setup Wizard -- see
-# installer/wizard.py) into a native Windows binary with Nuitka, and on
-# a tag push, attaches it to a GitHub Release. macOS is not built --
-# Nuitka's onefile mode doesn't support PyQt6 on macOS. The installer has
-# no dependency on the winxp package at build time -- it fetches winxp from
-# this repo at *run* time, so this workflow only ever needs to build
-# installer/__main__.py itself.
-#
-# Trigger a build without cutting a release: Actions tab -> Build Installer
-# -> Run workflow. Cut a real release: push a tag matching installer-v*.
-
 on:
   push:
     tags:
       - "installer-v*"
-  workflow_dispatch: {}
+  workflow_dispatch:
 
 permissions:
   contents: write
