@@ -13,20 +13,10 @@ from PyQt6.QtWidgets import (
 )
 
 from .. import icons, theme, vfs as vfs_mod
-from ..host_file_dialog import HostFileDialog
 from ..window_manager import XPWindow
 from ..xp_dialog import XPMessageBox
 
-AUDIO_EXTS = {".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac", ".wma"}
-VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".wmv"}
-MEDIA_EXTS = AUDIO_EXTS | VIDEO_EXTS
-MEDIA_FILTER = "*.mp3;*.wav;*.ogg;*.flac;*.m4a;*.aac;*.wma;*.mp4;*.mov;*.avi;*.mkv;*.webm;*.m4v;*.wmv"
 FILE_ICON_BY_KIND = {vfs_mod.VIDEO: "video_file"}  # else falls back to audio_file
-
-
-def _icon_for_host_file(name):
-    ext = os.path.splitext(name)[1].lower()
-    return "video_file" if ext in VIDEO_EXTS else "audio_file"
 
 SLIDER_QSS = """
     QSlider::groove:horizontal { height: 4px; background: #aca998; border-radius: 2px; }
@@ -175,8 +165,6 @@ class WindowsMediaPlayerWindow(XPWindow):
         bar = QMenuBar()
         theme.style_menubar(bar)
         file_menu = bar.addMenu("&File")
-        file_menu.addAction(self._act("&Import from Computer...", self._import_from_computer))
-        file_menu.addSeparator()
         file_menu.addAction(self._act("E&xit", self.close))
         bar.addMenu("&View")
         bar.addMenu("&Play")
@@ -263,9 +251,6 @@ class WindowsMediaPlayerWindow(XPWindow):
         self.list.setStyleSheet("background: white;")
         self.list.itemDoubleClicked.connect(self._on_item_double)
         layout.addWidget(self.list, 1)
-        import_btn = QPushButton("Import...")
-        import_btn.clicked.connect(self._import_from_computer)
-        layout.addWidget(import_btn)
         return panel
 
     # -- playlist ---------------------------------------------------------
@@ -352,29 +337,6 @@ class WindowsMediaPlayerWindow(XPWindow):
     def _on_seek_released(self):
         self.player.setPosition(self.seek_slider.value())
         self._seeking = False
-
-    # -- import from the real host filesystem ------------------------------
-    def _import_from_computer(self):
-        path = HostFileDialog.get_open_filename(
-            self, "Import into Media Library", MEDIA_EXTS, MEDIA_FILTER,
-            icon_resolver=_icon_for_host_file,
-        )
-        if not path:
-            return
-        try:
-            with open(path, "rb") as f:
-                data = f.read()
-        except OSError:
-            XPMessageBox.critical(self, "Windows Media Player", "Unable to read the selected file.")
-            return
-        ext = os.path.splitext(path)[1].lower()
-        name = os.path.basename(path)
-        if ext in VIDEO_EXTS:
-            node = vfs_mod.vfs.create_video_file(vfs_mod.vfs.my_music_id, name, data, ext or ".mp4")
-        else:
-            node = vfs_mod.vfs.create_audio_file(vfs_mod.vfs.my_music_id, name, data, ext or ".mp3")
-        self._load_playlist()
-        self._play_track(node.id)
 
     def _about(self):
         XPMessageBox.information(

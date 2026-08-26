@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QSize, Qt, QTime, QTimer, pyqtSignal
+from PyQt6.QtCore import QPoint, QSize, Qt, QTime, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMenu, QPushButton, QWidget
+from PyQt6.QtWidgets import (
+    QCheckBox, QHBoxLayout, QLabel, QMenu, QPushButton, QSlider, QVBoxLayout, QWidget,
+)
 
-from . import icons
+from . import icons, theme
+from .settings import settings
 
 
 class StartButton(QPushButton):
@@ -75,6 +78,60 @@ class TaskButton(QPushButton):
         self.setText(self._elide(text))
 
 
+class VolumePopup(QWidget):
+    def __init__(self, anchor):
+        super().__init__(anchor.window(), Qt.WindowType.FramelessWindowHint | Qt.WindowType.Popup)
+        self.setFixedSize(64, 150)
+        self.setStyleSheet(f"background: {theme.XP_WINDOW_BG}; border: 1px solid #716f64;")
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(6, 8, 6, 6)
+        layout.setSpacing(4)
+
+        label = QLabel("Volume")
+        label.setStyleSheet("background: transparent; font-size: 11px;")
+        layout.addWidget(label, 0, Qt.AlignmentFlag.AlignHCenter)
+
+        self.slider = QSlider(Qt.Orientation.Vertical)
+        self.slider.setRange(0, 100)
+        self.slider.setValue(settings.volume)
+        self.slider.valueChanged.connect(settings.set_volume)
+        layout.addWidget(self.slider, 1, Qt.AlignmentFlag.AlignHCenter)
+
+        self.mute_check = QCheckBox("Mute")
+        self.mute_check.setStyleSheet("background: transparent; font-size: 10px;")
+        self.mute_check.setChecked(settings.muted)
+        self.mute_check.toggled.connect(settings.set_muted)
+        layout.addWidget(self.mute_check, 0, Qt.AlignmentFlag.AlignHCenter)
+
+
+class SpeakerButton(QPushButton):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(22, 20)
+        self.setFlat(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setIconSize(QSize(16, 16))
+        self.setStyleSheet("QPushButton { border: none; background: transparent; }")
+        self._popup = None
+        self.clicked.connect(self._toggle_popup)
+        settings.volume_changed.connect(self._refresh_icon)
+        self._refresh_icon()
+
+    def _refresh_icon(self):
+        key = "volume_mute" if settings.muted or settings.volume == 0 else "volume"
+        self.setIcon(icons.icon(key, 16))
+
+    def _toggle_popup(self):
+        if self._popup is not None and self._popup.isVisible():
+            self._popup.hide()
+            return
+        self._popup = VolumePopup(self)
+        pos = self.mapToGlobal(QPoint(self.width() - self._popup.width(), -self._popup.height()))
+        self._popup.move(pos)
+        self._popup.show()
+
+
 class Clock(QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -122,6 +179,8 @@ class Taskbar(QWidget):
         tray.setStyleSheet("background: #123a8f; border: 1px inset #0a1f5c; border-radius: 2px;")
         tray_l = QHBoxLayout(tray)
         tray_l.setContentsMargins(4, 0, 4, 0)
+        self.speaker = SpeakerButton()
+        tray_l.addWidget(self.speaker)
         self.clock = Clock()
         tray_l.addWidget(self.clock)
         layout.addWidget(tray)

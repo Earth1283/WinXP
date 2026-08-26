@@ -23,6 +23,8 @@ class PowerScreen(QWidget):
         self.show()
         self.raise_()
         if self.action == "shutdown":
+            from .. import audio
+            audio.sounds.play("shutdown")
             QTimer.singleShot(2200, QApplication.instance().quit)
         else:
             QTimer.singleShot(1800, lambda: self._finish_logoff(wm))

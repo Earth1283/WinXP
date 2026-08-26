@@ -87,6 +87,10 @@ def _draw(name: str, size: int) -> QPixmap:
         _draw_video_file(p, s)
     elif name == "wmp":
         _draw_wmp(p, s)
+    elif name == "volume":
+        _draw_volume(p, s)
+    elif name == "volume_mute":
+        _draw_volume(p, s, muted=True)
     elif name == "tool_pencil":
         _draw_tool_pencil(p, s)
     elif name == "tool_brush":
@@ -406,6 +410,29 @@ def _draw_video_file(p, s):
     p.setPen(Qt.PenStyle.NoPen)
     p.setBrush(QColor("#7fd0ff"))
     p.drawPolygon(tri)
+
+
+def _draw_volume(p, s, muted=False):
+    body = QPolygon([
+        QPoint(int(s * 0.10), int(s * 0.38)),
+        QPoint(int(s * 0.32), int(s * 0.38)),
+        QPoint(int(s * 0.54), int(s * 0.18)),
+        QPoint(int(s * 0.54), int(s * 0.82)),
+        QPoint(int(s * 0.32), int(s * 0.62)),
+        QPoint(int(s * 0.10), int(s * 0.62)),
+    ])
+    p.setPen(QPen(QColor("#333"), 1))
+    p.setBrush(QColor("#333"))
+    p.drawPolygon(body)
+    if muted:
+        p.setPen(QPen(QColor("#c33"), max(1, int(s * 0.09)), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawLine(QPoint(int(s * 0.62), int(s * 0.34)), QPoint(int(s * 0.90), int(s * 0.66)))
+        p.drawLine(QPoint(int(s * 0.90), int(s * 0.34)), QPoint(int(s * 0.62), int(s * 0.66)))
+    else:
+        p.setPen(QPen(QColor("#333"), max(1, int(s * 0.06)), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawArc(QRectF(s * 0.58, s * 0.28, s * 0.20, s * 0.44), -50 * 16, 100 * 16)
+        p.drawArc(QRectF(s * 0.68, s * 0.16, s * 0.26, s * 0.68), -50 * 16, 100 * 16)
 
 
 def _draw_wmp(p, s):

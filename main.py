@@ -5,6 +5,7 @@ from PyQt6.QtGui import QColor, QFont, QPalette
 from PyQt6.QtWidgets import QApplication
 
 from winxp import theme
+from winxp.apps.boot_screen import BootScreen
 from winxp.desktop import Desktop
 from winxp.vfs import vfs
 
@@ -35,8 +36,17 @@ def main():
     app.setPalette(_light_palette())
     app.setFont(QFont("Tahoma", 9))
     vfs.load_or_init()
-    desktop = Desktop()
-    desktop.show()
+
+    boot = BootScreen()
+    desktop = None
+
+    def _start_desktop():
+        nonlocal desktop
+        desktop = Desktop()
+        desktop.show()
+        boot.close()
+
+    boot.show_fullscreen(_start_desktop)
     sys.exit(app.exec())
 
 

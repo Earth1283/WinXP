@@ -130,6 +130,9 @@ class Desktop(QWidget):
         self._layout_icons()
         self._reposition()
 
+        from . import audio
+        audio.sounds.play("startup")
+
     def resizeEvent(self, ev):
         self._reposition()
 

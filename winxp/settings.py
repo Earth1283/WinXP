@@ -19,10 +19,13 @@ WALLPAPERS = {
 
 class Settings(QObject):
     wallpaper_changed = pyqtSignal()
+    volume_changed = pyqtSignal()
 
     def __init__(self):
         super().__init__()
         self.wallpaper = "Bliss (default)"
+        self.volume = 70
+        self.muted = False
         self.load()
 
     def load(self):
@@ -31,19 +34,31 @@ class Settings(QObject):
                 with open(STORE_PATH) as f:
                     data = json.load(f)
                 self.wallpaper = data.get("wallpaper", self.wallpaper)
+                self.volume = data.get("volume", self.volume)
+                self.muted = data.get("muted", self.muted)
             except Exception:
                 pass
 
     def save(self):
         os.makedirs(os.path.dirname(STORE_PATH), exist_ok=True)
         with open(STORE_PATH, "w") as f:
-            json.dump({"wallpaper": self.wallpaper}, f)
+            json.dump({"wallpaper": self.wallpaper, "volume": self.volume, "muted": self.muted}, f)
 
     def set_wallpaper(self, name):
         if name in WALLPAPERS:
             self.wallpaper = name
             self.save()
             self.wallpaper_changed.emit()
+
+    def set_volume(self, value):
+        self.volume = max(0, min(100, value))
+        self.save()
+        self.volume_changed.emit()
+
+    def set_muted(self, muted):
+        self.muted = muted
+        self.save()
+        self.volume_changed.emit()
 
 
 settings = Settings()

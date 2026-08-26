@@ -189,6 +189,9 @@ class XPMessageBox(QDialog):
         else:
             center = QApplication.primaryScreen().geometry().center()
         box.move(center.x() - box.width() // 2, center.y() - box.height() // 2)
+        if kind in ("critical", "warning"):
+            from . import audio
+            audio.sounds.play("error")
         box.exec()
         result = box.result_button()
         return result if result is not None else (default if default is not None else buttons[-1])

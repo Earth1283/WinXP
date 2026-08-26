@@ -2,9 +2,11 @@
 
 `winxp/apps/wmp.py` plays real media through `PyQt6.QtMultimedia`
 (`QMediaPlayer` + `QAudioOutput`, backed by ffmpeg) — not a fake/decorative
-transport bar. It's also fully DIY-chrome like the rest of the app,
-including the import picker (see `HostFileDialog` in `docs/dialogs.md`) —
-no native OS dialog opens anywhere in this app.
+transport bar. Unlike Notepad/WordPad/Paint, it has no way to bring in new
+content at all: no file dialog, no host filesystem access, nothing. It
+plays whatever's procedurally seeded into the library at bootstrap (see
+"Sample content" below) — fully self-contained inside `~/.winxp_sim`, same
+as everything else in the sim.
 
 ## vfs kinds
 
@@ -43,21 +45,28 @@ plumbing than this warrants) and a `QVideoWidget`. `_play_track()` checks
 accordingly; `player.setVideoOutput(video_widget)` is wired once up front
 and is harmless when the loaded source has no video stream.
 
-## Import
+## Sample content (`winxp/sample_media.py`)
 
-`_import_from_computer()` opens `HostFileDialog` (`docs/dialogs.md`) — Luna
-chrome, but browsing the real host filesystem rather than the vfs, filtered
-to `MEDIA_EXTS` (`AUDIO_EXTS | VIDEO_EXTS`). Whatever's picked gets read as
-raw bytes and written straight into the vfs via
-`create_audio_file`/`create_video_file` based on the file's extension — no
-transcoding, no format conversion, the original bytes become the new node's
-content file in `ntfs/`.
+Since Media Player can't import anything, it needs *something* to play out
+of the box. `sample_media.py` procedurally synthesizes two short WAV tracks
+using only stdlib `wave`/`math`/`struct` — plain sine-tone sequences, not
+derived from or resembling any real recording, same "no external assets"
+approach as `winxp/icons.py`'s procedural icon drawing.
 
-## Testing note
+`VFS._seed_sample_media()` writes them into `My Music` via the normal
+`create_audio_file` path (so they're indistinguishable from any other vfs
+node — real files in `ntfs/`, listed in `vfs.json` like anything else). It
+no-ops if `My Music` already has audio/video content, and runs from both
+`_init_default()` (brand-new stores) and `_load()` (existing stores that
+have a `My Music` folder but nothing in it yet — covers upgrading from the
+version of the sim that had Media Player but no seeded content).
 
-Playback was verified against ffmpeg-generated synthetic clips (a sine-tone
-WAV, and an `ffmpeg -f lavfi -i testsrc ...` test-pattern MP4 with an AAC
-tone track) rather than any downloaded real-world media — confirmed real
-h264/AAC decode, `hasVideo`, position/duration tracking, and the
-audio↔video widget switch, without pulling in copyrighted content just to
-exercise a codec path.
+## Earlier design note
+
+An earlier version of this feature had "Import from Computer..." reach the
+real host filesystem to pull in real audio/video files — first via a native
+`QFileDialog`, later via a from-scratch Luna-chrome picker that still
+browsed real directories. Both were removed: the sim doesn't touch the host
+filesystem at all now, and Media Player works entirely off procedurally
+generated content instead. See `docs/dialogs.md` for the broader
+no-native-chrome policy this follows.

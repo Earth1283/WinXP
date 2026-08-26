@@ -128,6 +128,8 @@ class VFS:
             sc = self._new(SHORTCUT, name, desktop.id, target=target, icon=icon)
             desktop.children.append(sc.id)
 
+        self._seed_sample_media()
+
     def _new(self, kind, name, parent, icon="", target="", ext=""):
         node = Node(id=str(uuid.uuid4())[:8], name=name, kind=kind,
                     parent=parent, icon=icon, target=target, ext=ext)
@@ -175,6 +177,17 @@ class VFS:
             migrated = True
         if migrated:
             self.save()
+        self._seed_sample_media()
+
+    def _seed_sample_media(self):
+        """Give Media Player something real to play without ever reaching
+        outside ~/.winxp_sim -- no-ops once My Music already has content."""
+        if any(c.kind in (AUDIO, VIDEO) for c in self.children_of(self.my_music_id)):
+            return
+        from . import sample_media
+        for name, make in (("Chimes.wav", sample_media.chime),
+                            ("Sample Music.wav", sample_media.sample_tune)):
+            self.create_audio_file(self.my_music_id, name, make(), ".wav")
 
     def _migrate_legacy_content(self, node, legacy_content):
         """One-time upgrade from the old scheme where content lived inline

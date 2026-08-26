@@ -31,16 +31,14 @@ Three things are built on top of it:
 - **`XPColorDialog`** (`winxp/color_dialog.py`) — replacement for
   `QColorDialog`. 48-swatch basic-colors grid + RGB spinboxes + live
   preview, used by Paint's color picker and "Edit Colors...".
-- **`HostFileDialog`** (`winxp/host_file_dialog.py`) — replacement for
-  `QFileDialog` used when the sim genuinely needs to reach the *real* host
-  filesystem (currently: Media Player's "Import from Computer..."). Same
-  Luna chrome as `VfsFileDialog`, but walks real directories via
-  `os.listdir()` instead of vfs nodes, framed as `Local Disk (C:)` rooted at
-  the user's home directory. This was originally a native `QFileDialog` —
-  reaching outside the vfs seemed like a case where a real OS picker was
-  unavoidable, but it isn't: a custom-drawn dialog can browse *any*
-  filesystem, real or fake, as long as it lists real entries instead of vfs
-  nodes. Nothing in this app opens native OS chrome anymore.
+There is no dialog anywhere in the app that reaches the real host
+filesystem. An earlier version of Media Player's "Import from Computer..."
+briefly did (first via native `QFileDialog`, then via a DIY picker that
+still walked real host directories) — both were removed. The host
+filesystem doesn't leak into the sim at all now, not even through a
+custom-chrome dialog browsing real folders: see `docs/media_player.md` for
+how Media Player gets real playable content without ever reaching outside
+`~/.winxp_sim`.
 
 ## The menu bar native-chrome bug
 
