@@ -1,8 +1,9 @@
 name: Build Installer
 
 # Compiles installer/ (the standalone Windows XP Setup Wizard -- see
-# installer/wizard.py) into a native binary per platform with Nuitka, and on
-# a tag push, attaches both binaries to a GitHub Release. The installer has
+# installer/wizard.py) into a native Windows binary with Nuitka, and on
+# a tag push, attaches it to a GitHub Release. macOS is not built --
+# Nuitka's onefile mode doesn't support PyQt6 on macOS. The installer has
 # no dependency on the winxp package at build time -- it fetches winxp from
 # this repo at *run* time, so this workflow only ever needs to build
 # installer/__main__.py itself.
@@ -21,17 +22,7 @@ permissions:
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            asset_name: WindowsXP-Setup-windows.exe
-            nuitka_output: WindowsXP-Setup.exe
-          - os: macos-latest
-            asset_name: WindowsXP-Setup-macos
-            nuitka_output: WindowsXP-Setup
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -44,8 +35,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install PyQt6 nuitka
 
-      - name: Build with Nuitka (Windows)
-        if: runner.os == 'Windows'
+      - name: Build with Nuitka
         run: >
           python -m nuitka
           --standalone
@@ -57,28 +47,16 @@ jobs:
           --assume-yes-for-downloads
           installer/__main__.py
 
-      - name: Build with Nuitka (macOS)
-        if: runner.os == 'macOS'
-        run: >
-          python -m nuitka
-          --standalone
-          --onefile
-          --enable-plugin=pyqt6
-          --output-filename=WindowsXP-Setup
-          --output-dir=dist
-          --assume-yes-for-downloads
-          installer/__main__.py
-
       - name: Stage release asset
         shell: bash
         run: |
           mkdir -p out
-          cp "dist/${{ matrix.nuitka_output }}" "out/${{ matrix.asset_name }}"
+          cp "dist/WindowsXP-Setup.exe" "out/WindowsXP-Setup-windows.exe"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset_name }}
-          path: out/${{ matrix.asset_name }}
+          name: WindowsXP-Setup-windows.exe
+          path: out/WindowsXP-Setup-windows.exe
           if-no-files-found: error
 
   release:
@@ -103,13 +81,9 @@ jobs:
           body: |
             Automated build of the Windows XP Setup Wizard (`installer/`).
 
-            These binaries are unsigned, on purpose -- this is a joke
-            project, not a real OS installer. Windows SmartScreen and macOS
-            Gatekeeper will both flag them on first run:
-
-            - **Windows:** click "More info" -> "Run anyway".
-            - **macOS:** right-click the binary -> "Open" (not double-click)
-              the first time.
+            This binary is unsigned, on purpose -- this is a joke project,
+            not a real OS installer. Windows SmartScreen will flag it on
+            first run: click "More info" -> "Run anyway".
 
             The installer fetches the actual sim from this repo's `main`
             branch at run time, so it always installs the latest commit,
