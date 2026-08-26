@@ -26,20 +26,21 @@ Three things are built on top of it:
   the same way. Icons (`msg_warning`/`msg_error`/`msg_info`/`msg_question`)
   are procedurally drawn in `winxp/icons.py`, not system glyphs.
 - **`VfsFileDialog`** (`winxp/vfs_dialog.py`) — replacement for
-  `QFileDialog`, but browses the *simulated* filesystem (`winxp/vfs.py`),
-  not the real one. Used by Notepad/WordPad/Paint's Open and Save As.
+  `QFileDialog`, browsing the *simulated* filesystem (`winxp/vfs.py`). Used
+  by Notepad/WordPad/Paint's Open and Save As.
 - **`XPColorDialog`** (`winxp/color_dialog.py`) — replacement for
   `QColorDialog`. 48-swatch basic-colors grid + RGB spinboxes + live
   preview, used by Paint's color picker and "Edit Colors...".
-
-## The one deliberate exception
-
-`winxp/apps/wmp.py`'s "Import from Computer..." uses a real, native
-`QFileDialog`. This is intentional, not an oversight: it's reaching into
-the *actual* host filesystem to pull in a real audio/video file, and no
-custom-drawn fake-XP dialog can browse folders it has no knowledge of. Every
-other dialog in the app browses the simulated vfs tree and is fully custom;
-this one bridges to reality and a real picker is the honest tool for that.
+- **`HostFileDialog`** (`winxp/host_file_dialog.py`) — replacement for
+  `QFileDialog` used when the sim genuinely needs to reach the *real* host
+  filesystem (currently: Media Player's "Import from Computer..."). Same
+  Luna chrome as `VfsFileDialog`, but walks real directories via
+  `os.listdir()` instead of vfs nodes, framed as `Local Disk (C:)` rooted at
+  the user's home directory. This was originally a native `QFileDialog` —
+  reaching outside the vfs seemed like a case where a real OS picker was
+  unavoidable, but it isn't: a custom-drawn dialog can browse *any*
+  filesystem, real or fake, as long as it lists real entries instead of vfs
+  nodes. Nothing in this app opens native OS chrome anymore.
 
 ## The menu bar native-chrome bug
 

@@ -8,21 +8,25 @@ from PyQt6.QtGui import QAction, QColor, QPainter, QPen, QPolygon
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtWidgets import (
-    QFileDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton,
+    QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton,
     QSlider, QStackedLayout, QVBoxLayout, QWidget,
 )
 
 from .. import icons, theme, vfs as vfs_mod
+from ..host_file_dialog import HostFileDialog
 from ..window_manager import XPWindow
 from ..xp_dialog import XPMessageBox
 
 AUDIO_EXTS = {".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac", ".wma"}
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".wmv"}
-MEDIA_FILTER = (
-    "Media Files (*.mp3 *.wav *.ogg *.flac *.m4a *.aac *.wma "
-    "*.mp4 *.mov *.avi *.mkv *.webm *.m4v *.wmv)"
-)
+MEDIA_EXTS = AUDIO_EXTS | VIDEO_EXTS
+MEDIA_FILTER = "*.mp3;*.wav;*.ogg;*.flac;*.m4a;*.aac;*.wma;*.mp4;*.mov;*.avi;*.mkv;*.webm;*.m4v;*.wmv"
 FILE_ICON_BY_KIND = {vfs_mod.VIDEO: "video_file"}  # else falls back to audio_file
+
+
+def _icon_for_host_file(name):
+    ext = os.path.splitext(name)[1].lower()
+    return "video_file" if ext in VIDEO_EXTS else "audio_file"
 
 SLIDER_QSS = """
     QSlider::groove:horizontal { height: 4px; background: #aca998; border-radius: 2px; }
@@ -351,8 +355,9 @@ class WindowsMediaPlayerWindow(XPWindow):
 
     # -- import from the real host filesystem ------------------------------
     def _import_from_computer(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Import into Media Library", os.path.expanduser("~"), MEDIA_FILTER
+        path = HostFileDialog.get_open_filename(
+            self, "Import into Media Library", MEDIA_EXTS, MEDIA_FILTER,
+            icon_resolver=_icon_for_host_file,
         )
         if not path:
             return

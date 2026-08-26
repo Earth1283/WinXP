@@ -2,9 +2,9 @@
 
 `winxp/apps/wmp.py` plays real media through `PyQt6.QtMultimedia`
 (`QMediaPlayer` + `QAudioOutput`, backed by ffmpeg) — not a fake/decorative
-transport bar. Everything except importing a file from the real host disk
-(see "the one deliberate exception" in `docs/dialogs.md`) is the same DIY,
-no-native-chrome approach as the rest of the app.
+transport bar. It's also fully DIY-chrome like the rest of the app,
+including the import picker (see `HostFileDialog` in `docs/dialogs.md`) —
+no native OS dialog opens anywhere in this app.
 
 ## vfs kinds
 
@@ -45,12 +45,13 @@ and is harmless when the loaded source has no video stream.
 
 ## Import
 
-`_import_from_computer()` opens a *native* file picker (deliberately — see
-`docs/dialogs.md`) filtered to `MEDIA_FILTER` (both `AUDIO_EXTS` and
-`VIDEO_EXTS`). Whatever's picked gets read as raw bytes and written straight
-into the vfs via `create_audio_file`/`create_video_file` based on the file's
-extension — no transcoding, no format conversion, the original bytes become
-the new node's content file in `ntfs/`.
+`_import_from_computer()` opens `HostFileDialog` (`docs/dialogs.md`) — Luna
+chrome, but browsing the real host filesystem rather than the vfs, filtered
+to `MEDIA_EXTS` (`AUDIO_EXTS | VIDEO_EXTS`). Whatever's picked gets read as
+raw bytes and written straight into the vfs via
+`create_audio_file`/`create_video_file` based on the file's extension — no
+transcoding, no format conversion, the original bytes become the new node's
+content file in `ntfs/`.
 
 ## Testing note
 
