@@ -69,6 +69,42 @@ def _draw(name: str, size: int) -> QPixmap:
         _draw_shutdown(p, s)
     elif name == "logoff":
         _draw_logoff(p, s)
+    elif name == "task_manager":
+        _draw_task_manager(p, s)
+    elif name == "msg_warning":
+        _draw_msg_warning(p, s)
+    elif name == "msg_error":
+        _draw_msg_error(p, s)
+    elif name == "msg_info":
+        _draw_msg_info(p, s)
+    elif name == "msg_question":
+        _draw_msg_question(p, s)
+    elif name == "bitmap_file":
+        _draw_bitmap_file(p, s)
+    elif name == "audio_file":
+        _draw_audio_file(p, s)
+    elif name == "wmp":
+        _draw_wmp(p, s)
+    elif name == "tool_pencil":
+        _draw_tool_pencil(p, s)
+    elif name == "tool_brush":
+        _draw_tool_brush(p, s)
+    elif name == "tool_eraser":
+        _draw_tool_eraser(p, s)
+    elif name == "tool_fill":
+        _draw_tool_fill(p, s)
+    elif name == "tool_eyedropper":
+        _draw_tool_eyedropper(p, s)
+    elif name == "tool_line":
+        _draw_tool_line(p, s)
+    elif name == "tool_rect":
+        _draw_tool_rect(p, s)
+    elif name == "tool_ellipse":
+        _draw_tool_ellipse(p, s)
+    elif name == "tool_text":
+        _draw_tool_text(p, s)
+    elif name == "tool_select":
+        _draw_tool_select(p, s)
     else:
         p.setBrush(QColor("#cccccc"))
         p.drawRect(2, 2, s - 4, s - 4)
@@ -250,9 +286,310 @@ def _draw_shutdown(p, s):
     p.drawLine(QPoint(int(s * 0.5), int(s * 0.08)), QPoint(int(s * 0.5), int(s * 0.45)))
 
 
+def _draw_msg_warning(p, s):
+    poly = QPolygon([
+        QPoint(int(s * 0.5), int(s * 0.06)),
+        QPoint(int(s * 0.96), int(s * 0.90)),
+        QPoint(int(s * 0.04), int(s * 0.90)),
+    ])
+    p.setPen(QPen(QColor("#8a6a00"), max(1, int(s * 0.03))))
+    p.setBrush(_grad(QRectF(0, 0, s, s), "#ffe680", "#ffc61a"))
+    p.drawPolygon(poly)
+    p.setPen(QPen(QColor("#4a3a00"), max(2, int(s * 0.09))))
+    p.drawLine(QPoint(int(s * 0.5), int(s * 0.38)), QPoint(int(s * 0.5), int(s * 0.64)))
+    p.setBrush(QColor("#4a3a00"))
+    p.setPen(Qt.PenStyle.NoPen)
+    r = s * 0.05
+    p.drawEllipse(QPoint(int(s * 0.5), int(s * 0.76)), int(r), int(r))
+
+
+def _draw_msg_error(p, s):
+    r = QRectF(s * 0.06, s * 0.06, s * 0.88, s * 0.88)
+    p.setPen(QPen(QColor("#8a1a1a"), 1))
+    p.setBrush(_grad(r, "#ff7a6e", "#d81f1f"))
+    p.drawEllipse(r)
+    p.setPen(QPen(QColor("white"), max(2, int(s * 0.10))))
+    inset = s * 0.30
+    p.drawLine(QPoint(int(inset), int(inset)), QPoint(int(s - inset), int(s - inset)))
+    p.drawLine(QPoint(int(s - inset), int(inset)), QPoint(int(inset), int(s - inset)))
+
+
+def _draw_msg_info(p, s):
+    r = QRectF(s * 0.06, s * 0.06, s * 0.88, s * 0.88)
+    p.setPen(QPen(QColor("#1a3d8a"), 1))
+    p.setBrush(_grad(r, "#7fb3ff", "#1a5fd8"))
+    p.drawEllipse(r)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor("white"))
+    p.drawEllipse(QPoint(int(s * 0.5), int(s * 0.27)), int(s * 0.07), int(s * 0.07))
+    p.drawRoundedRect(QRectF(s * 0.42, s * 0.42, s * 0.16, s * 0.38), s * 0.04, s * 0.04)
+
+
+def _draw_msg_question(p, s):
+    r = QRectF(s * 0.06, s * 0.06, s * 0.88, s * 0.88)
+    p.setPen(QPen(QColor("#1a3d8a"), 1))
+    p.setBrush(_grad(r, "#7fb3ff", "#1a5fd8"))
+    p.drawEllipse(r)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor("white"))
+    f = p.font()
+    f.setBold(True)
+    f.setPixelSize(int(s * 0.55))
+    p.setFont(f)
+    p.setPen(QColor("white"))
+    p.drawText(QRectF(0, 0, s, s), Qt.AlignmentFlag.AlignCenter, "?")
+
+
+def _draw_audio_file(p, s):
+    r = QRectF(s * 0.20, s * 0.06, s * 0.60, s * 0.86)
+    p.setPen(QPen(QColor("#555"), 1))
+    p.setBrush(QColor("white"))
+    poly = QPolygon([
+        QPoint(int(r.left()), int(r.top())),
+        QPoint(int(r.right() - s * 0.14), int(r.top())),
+        QPoint(int(r.right()), int(r.top() + s * 0.14)),
+        QPoint(int(r.right()), int(r.bottom())),
+        QPoint(int(r.left()), int(r.bottom())),
+    ])
+    p.drawPolygon(poly)
+    p.setBrush(QColor("#c8c8c8"))
+    p.drawPolygon(QPolygon([
+        QPoint(int(r.right() - s * 0.14), int(r.top())),
+        QPoint(int(r.right()), int(r.top() + s * 0.14)),
+        QPoint(int(r.right() - s * 0.14), int(r.top() + s * 0.14)),
+    ]))
+    p.setPen(QPen(QColor("#7a3fbf"), max(1, int(s * 0.045))))
+    p.setBrush(QColor("#7a3fbf"))
+    stem_x1 = r.left() + r.width() * 0.36
+    stem_x2 = r.left() + r.width() * 0.62
+    head_y = r.top() + r.height() * 0.62
+    p.drawLine(QPoint(int(stem_x1), int(head_y)), QPoint(int(stem_x1), int(r.top() + r.height() * 0.28)))
+    p.drawLine(QPoint(int(stem_x2), int(head_y - r.height() * 0.05)),
+               QPoint(int(stem_x2), int(r.top() + r.height() * 0.20)))
+    p.drawLine(QPoint(int(stem_x1), int(r.top() + r.height() * 0.28)),
+               QPoint(int(stem_x2), int(r.top() + r.height() * 0.20)))
+    p.setPen(Qt.PenStyle.NoPen)
+    note_r = s * 0.06
+    p.drawEllipse(QPoint(int(stem_x1), int(head_y)), int(note_r), int(note_r * 0.8))
+    p.drawEllipse(QPoint(int(stem_x2), int(head_y - r.height() * 0.05)), int(note_r), int(note_r * 0.8))
+
+
+def _draw_wmp(p, s):
+    r = QRectF(s * 0.06, s * 0.06, s * 0.88, s * 0.88)
+    p.setPen(QPen(QColor("#274a6e"), 1))
+    p.setBrush(_grad(r, "#bcd6f0", "#5f8fc4"))
+    p.drawEllipse(r)
+    inner = r.adjusted(s * 0.10, s * 0.10, -s * 0.10, -s * 0.10)
+    p.setPen(QPen(QColor("#1a3a5c"), 1))
+    p.setBrush(QColor("#0d2338"))
+    p.drawEllipse(inner)
+    tri = QPolygon([
+        QPoint(int(inner.left() + inner.width() * 0.38), int(inner.top() + inner.height() * 0.28)),
+        QPoint(int(inner.left() + inner.width() * 0.38), int(inner.bottom() - inner.height() * 0.28)),
+        QPoint(int(inner.left() + inner.width() * 0.72), int(inner.top() + inner.height() * 0.5)),
+    ])
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor("#7fd0ff"))
+    p.drawPolygon(tri)
+
+
+def _draw_task_manager(p, s):
+    r = QRectF(s * 0.08, s * 0.08, s * 0.84, s * 0.84)
+    p.setPen(QPen(QColor("#444"), 1))
+    p.setBrush(QColor("black"))
+    p.drawRoundedRect(r, 2, 2)
+    p.setPen(QPen(QColor("#33e33d"), max(1, int(s * 0.07))))
+    bars = [0.3, 0.55, 0.4, 0.75, 0.5]
+    bw = r.width() / (len(bars) + 1)
+    for i, h in enumerate(bars):
+        x = r.left() + bw * (i + 0.7)
+        p.drawLine(QPoint(int(x), int(r.bottom() - 3)), QPoint(int(x), int(r.bottom() - 3 - r.height() * h)))
+
+
 def _draw_logoff(p, s):
     p.setPen(QPen(QColor("#3366cc"), s * 0.08))
     p.drawRect(QRectF(s * 0.2, s * 0.2, s * 0.35, s * 0.6))
     p.drawLine(QPoint(int(s * 0.45), int(s * 0.5)), QPoint(int(s * 0.85), int(s * 0.5)))
     p.drawLine(QPoint(int(s * 0.7), int(s * 0.35)), QPoint(int(s * 0.85), int(s * 0.5)))
     p.drawLine(QPoint(int(s * 0.7), int(s * 0.65)), QPoint(int(s * 0.85), int(s * 0.5)))
+
+
+def _draw_bitmap_file(p, s):
+    r = QRectF(s * 0.20, s * 0.06, s * 0.60, s * 0.86)
+    p.setPen(QPen(QColor("#555"), 1))
+    p.setBrush(QColor("white"))
+    poly = QPolygon([
+        QPoint(int(r.left()), int(r.top())),
+        QPoint(int(r.right() - s * 0.14), int(r.top())),
+        QPoint(int(r.right()), int(r.top() + s * 0.14)),
+        QPoint(int(r.right()), int(r.bottom())),
+        QPoint(int(r.left()), int(r.bottom())),
+    ])
+    p.drawPolygon(poly)
+    p.setBrush(QColor("#c8c8c8"))
+    p.drawPolygon(QPolygon([
+        QPoint(int(r.right() - s * 0.14), int(r.top())),
+        QPoint(int(r.right()), int(r.top() + s * 0.14)),
+        QPoint(int(r.right() - s * 0.14), int(r.top() + s * 0.14)),
+    ]))
+    pic = QRectF(r.left() + s * 0.06, r.top() + s * 0.30, r.width() - s * 0.12, s * 0.34)
+    p.setPen(QPen(QColor("#888"), 1))
+    p.setBrush(QColor("#bfe2ff"))
+    p.drawRect(pic)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor("#ffd23f"))
+    p.drawEllipse(QPoint(int(pic.left() + pic.width() * 0.25), int(pic.top() + pic.height() * 0.3)),
+                  int(s * 0.05), int(s * 0.05))
+    p.setBrush(QColor("#3a8f3a"))
+    p.drawPolygon(QPolygon([
+        QPoint(int(pic.left()), int(pic.bottom())),
+        QPoint(int(pic.left() + pic.width() * 0.45), int(pic.top() + pic.height() * 0.35)),
+        QPoint(int(pic.left() + pic.width() * 0.75), int(pic.bottom())),
+    ]))
+    p.setBrush(QColor("#2a6e2a"))
+    p.drawPolygon(QPolygon([
+        QPoint(int(pic.left() + pic.width() * 0.4), int(pic.bottom())),
+        QPoint(int(pic.left() + pic.width() * 0.75), int(pic.top() + pic.height() * 0.25)),
+        QPoint(int(pic.right()), int(pic.bottom())),
+    ]))
+
+
+def _draw_tool_pencil(p, s):
+    p.save()
+    p.translate(s * 0.5, s * 0.5)
+    p.rotate(45)
+    body = QRectF(-s * 0.09, -s * 0.42, s * 0.18, s * 0.66)
+    p.setPen(QPen(QColor("#8a6a1a"), 1))
+    p.setBrush(QColor("#ffd23f"))
+    p.drawRect(body)
+    tip = QPolygon([
+        QPoint(int(-s * 0.09), int(body.bottom())),
+        QPoint(int(s * 0.09), int(body.bottom())),
+        QPoint(0, int(body.bottom() + s * 0.14)),
+    ])
+    p.setBrush(QColor("#e8c495"))
+    p.drawPolygon(tip)
+    p.setBrush(QColor("#333"))
+    p.drawRect(QRectF(-s * 0.02, body.bottom() + s * 0.08, s * 0.04, s * 0.05))
+    eraser = QRectF(-s * 0.09, -s * 0.50, s * 0.18, s * 0.09)
+    p.setBrush(QColor("#ff8fa3"))
+    p.drawRect(eraser)
+    p.restore()
+
+
+def _draw_tool_brush(p, s):
+    p.save()
+    p.translate(s * 0.5, s * 0.5)
+    p.rotate(45)
+    p.setPen(QPen(QColor("#7a4a1a"), s * 0.09, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+    p.drawLine(QPoint(0, int(-s * 0.1)), QPoint(0, int(s * 0.38)))
+    p.setPen(QPen(QColor("#c8c8c8"), 1))
+    p.setBrush(QColor("#dcdcdc"))
+    p.drawRect(QRectF(-s * 0.09, -s * 0.30, s * 0.18, s * 0.14))
+    bristles = QPolygon([
+        QPoint(int(-s * 0.09), int(-s * 0.30)),
+        QPoint(int(s * 0.09), int(-s * 0.30)),
+        QPoint(int(s * 0.05), int(-s * 0.46)),
+        QPoint(int(-s * 0.05), int(-s * 0.46)),
+    ])
+    p.setBrush(QColor("#e33"))
+    p.drawPolygon(bristles)
+    p.restore()
+
+
+def _draw_tool_eraser(p, s):
+    p.save()
+    p.translate(s * 0.5, s * 0.5)
+    p.rotate(-20)
+    r = QRectF(-s * 0.28, -s * 0.18, s * 0.56, s * 0.36)
+    p.setPen(QPen(QColor("#a34a6a"), 1))
+    p.setBrush(_grad(r, "#ff9fb8", "#e0567f"))
+    p.drawRoundedRect(r, s * 0.05, s * 0.05)
+    p.setPen(QPen(QColor("#a3a3a3"), max(1, int(s * 0.02))))
+    p.drawLine(QPoint(int(-s * 0.04), int(r.top())), QPoint(int(-s * 0.04), int(r.bottom())))
+    p.restore()
+
+
+def _draw_tool_fill(p, s):
+    p.save()
+    p.translate(s * 0.46, s * 0.5)
+    p.rotate(-30)
+    body = QRectF(-s * 0.20, -s * 0.28, s * 0.40, s * 0.32)
+    p.setPen(QPen(QColor("#555"), 1))
+    p.setBrush(QColor("#c3c3c3"))
+    p.drawRoundedRect(body, s * 0.03, s * 0.03)
+    lid = QRectF(-s * 0.20, -s * 0.34, s * 0.40, s * 0.09)
+    p.setBrush(QColor("#8f8f8f"))
+    p.drawRoundedRect(lid, s * 0.02, s * 0.02)
+    spout = QPolygon([
+        QPoint(int(s * 0.20), int(-s * 0.06)),
+        QPoint(int(s * 0.36), int(s * 0.02)),
+        QPoint(int(s * 0.20), int(s * 0.02)),
+    ])
+    p.setBrush(QColor("#8f8f8f"))
+    p.drawPolygon(spout)
+    p.restore()
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor("#ffc61a"))
+    drop = QPolygon([
+        QPoint(int(s * 0.66), int(s * 0.58)),
+        QPoint(int(s * 0.78), int(s * 0.74)),
+        QPoint(int(s * 0.66), int(s * 0.86)),
+        QPoint(int(s * 0.54), int(s * 0.74)),
+    ])
+    p.drawPolygon(drop)
+
+
+def _draw_tool_eyedropper(p, s):
+    p.save()
+    p.translate(s * 0.5, s * 0.5)
+    p.rotate(45)
+    p.setPen(QPen(QColor("#555"), 1))
+    p.setBrush(QColor("#dcdcdc"))
+    p.drawRect(QRectF(-s * 0.08, -s * 0.42, s * 0.16, s * 0.22))
+    p.setBrush(QColor("#3a8f3a"))
+    p.drawRect(QRectF(-s * 0.06, -s * 0.20, s * 0.12, s * 0.42))
+    tip = QPolygon([
+        QPoint(int(-s * 0.06), int(s * 0.22)),
+        QPoint(int(s * 0.06), int(s * 0.22)),
+        QPoint(0, int(s * 0.34)),
+    ])
+    p.setBrush(QColor("#245524"))
+    p.drawPolygon(tip)
+    p.restore()
+
+
+def _draw_tool_line(p, s):
+    p.setPen(QPen(QColor("#222"), max(1, int(s * 0.09)), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+    p.drawLine(QPoint(int(s * 0.18), int(s * 0.82)), QPoint(int(s * 0.82), int(s * 0.18)))
+
+
+def _draw_tool_rect(p, s):
+    p.setPen(QPen(QColor("#222"), max(1, int(s * 0.08))))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawRect(QRectF(s * 0.16, s * 0.24, s * 0.68, s * 0.52))
+
+
+def _draw_tool_ellipse(p, s):
+    p.setPen(QPen(QColor("#222"), max(1, int(s * 0.08))))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawEllipse(QRectF(s * 0.14, s * 0.22, s * 0.72, s * 0.56))
+
+
+def _draw_tool_text(p, s):
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor("#222"))
+    f = p.font()
+    f.setBold(True)
+    f.setPixelSize(int(s * 0.62))
+    p.setFont(f)
+    p.setPen(QColor("#222"))
+    p.drawText(QRectF(0, 0, s, s), Qt.AlignmentFlag.AlignCenter, "A")
+
+
+def _draw_tool_select(p, s):
+    pen = QPen(QColor("#222"), max(1, int(s * 0.055)))
+    pen.setStyle(Qt.PenStyle.DashLine)
+    p.setPen(pen)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawRect(QRectF(s * 0.14, s * 0.14, s * 0.72, s * 0.72))

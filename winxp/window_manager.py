@@ -1,8 +1,13 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QPoint, QRect, QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QCursor, QIcon, QPainter, QPixmap
-from PyQt6.QtWidgets import QApplication, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+import random
+
+from PyQt6.QtCore import QPoint, QRect, QSize, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QColor, QCursor, QIcon, QPainter, QPainterPath, QPixmap
+from PyQt6.QtWidgets import (
+    QApplication, QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QHBoxLayout,
+    QLabel, QPushButton, QVBoxLayout, QWidget,
+)
 
 from . import theme
 
@@ -51,6 +56,7 @@ class TitleBar(QWidget):
         self.setFixedHeight(28)
         self.setAutoFillBackground(False)
         self._drag_pos = None
+        self._glitch = False
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 3, 3, 0)
@@ -80,10 +86,33 @@ class TitleBar(QWidget):
     def set_title(self, text):
         self.title_label.setText(text)
 
+    def flash_glitch(self):
+        """Cursed: csrss.exe is dead, titlebar rendering briefly corrupts."""
+        self._glitch = True
+        self.update()
+        QTimer.singleShot(220, self._clear_glitch)
+
+    def _clear_glitch(self):
+        try:
+            self._glitch = False
+            self.update()
+        except RuntimeError:
+            pass  # window was closed before the timer fired
+
     def paintEvent(self, ev):
         p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        path = QPainterPath()
+        path.addRoundedRect(0, 0, self.width(), self.height() + 6, 5, 5)
+        p.setClipPath(path)
+        if self._glitch:
+            glitch_colors = ["#ff00ff", "#00ffff", "#000000", "#ffffff", "#ff2020"]
+            for y in range(self.height()):
+                c = QColor(random.choice(glitch_colors)) if random.random() < 0.55 else QColor("#3f8cf6")
+                p.setPen(c)
+                p.drawLine(0, y, self.width(), y)
+            return
         active = self.window_.is_active
-        p.fillRect(self.rect(), QColor("#000000"))
         grad_top = QColor("#0a58f2") if active else QColor("#8296b8")
         grad_mid = QColor("#3f8cf6") if active else QColor("#94a8c9")
         grad_bot = QColor("#0058e6") if active else QColor("#7f93b5")
@@ -142,19 +171,25 @@ class XPWindow(QWidget):
         self._icon = icons.icon(icon_key, 16)
 
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setMouseTracking(True)
         self.resize(size)
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(2, 2, 2, 2)
+        outer.setContentsMargins(10, 8, 10, 12)
         outer.setSpacing(0)
 
         self._frame = QWidget()
         self._frame.setObjectName("frame")
+        self._frame.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._frame.setStyleSheet(
-            "#frame { background: %s; border: 1px solid #0047ba; }" % theme.XP_WINDOW_BG
+            "#frame { background: %s; border: 1px solid #0047ba; "
+            "border-top-left-radius: 7px; border-top-right-radius: 7px; }" % theme.XP_WINDOW_BG
         )
         outer.addWidget(self._frame)
+
+        self._frozen = False
+        self._apply_shadow()
 
         inner = QVBoxLayout(self._frame)
         inner.setContentsMargins(2, 2, 2, 2)
@@ -175,6 +210,36 @@ class XPWindow(QWidget):
 
     def set_content_layout(self, layout):
         self.content.setLayout(layout)
+
+    def _apply_shadow(self):
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(24)
+        shadow.setOffset(0, 4)
+        shadow.setColor(QColor(0, 0, 0, 140))
+        self._frame.setGraphicsEffect(shadow)
+
+    def freeze(self, ms=4000):
+        """Cursed: services.exe is dead, this window hangs like a real 'Not Responding' app."""
+        if self._frozen:
+            return
+        self._frozen = True
+        effect = QGraphicsOpacityEffect(self._frame)
+        effect.setOpacity(0.55)
+        self._frame.setGraphicsEffect(effect)
+        self.setEnabled(False)
+        orig = self.windowTitle()
+        self.titlebar.set_title(orig + " (Not Responding)")
+
+        def _restore():
+            try:
+                self._apply_shadow()
+                self.setEnabled(True)
+                self.titlebar.set_title(orig)
+                self._frozen = False
+            except RuntimeError:
+                pass  # window was closed (e.g. by a crash/reboot) before the timer fired
+
+        QTimer.singleShot(ms, _restore)
 
     def setWindowTitle(self, title):
         super().setWindowTitle(title)

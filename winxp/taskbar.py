@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QSize, Qt, QTime, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMenu, QPushButton, QWidget
 
 from . import icons
 
@@ -91,6 +91,7 @@ class Clock(QLabel):
 class Taskbar(QWidget):
     start_clicked = pyqtSignal()
     task_clicked = pyqtSignal(object)
+    task_manager_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -158,3 +159,12 @@ class Taskbar(QWidget):
     def set_checked(self, window):
         for w, b in self._buttons.items():
             b.setChecked(w is window and w.isVisible())
+
+    def mousePressEvent(self, ev):
+        if ev.button() == Qt.MouseButton.RightButton:
+            menu = QMenu(self)
+            act = menu.addAction("Task Manager")
+            act.triggered.connect(self.task_manager_requested.emit)
+            menu.exec(ev.globalPosition().toPoint())
+        else:
+            super().mousePressEvent(ev)

@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextBrowser, QToolBar, QVBoxLayout,
 )
 
+from .. import theme
 from ..window_manager import XPWindow
 
 HOME_URL = "http://www.msn.com/"
@@ -14,19 +15,19 @@ PAGES = {
         "MSN.com - Home",
         """
         <body style="font-family: Tahoma; background:#ffffff; margin:0;">
-        <div style="background:linear-gradient(#0b3d91,#173f8a); padding:14px 20px;">
+        <div style="background:#123a7a; padding:14px 20px;">
         <span style="color:white; font-size:26px; font-weight:bold;">MSN</span>
         <span style="color:#bcd7ff; font-size:13px;"> &nbsp; Home&nbsp;&nbsp;News&nbsp;&nbsp;Sports&nbsp;&nbsp;Money</span>
         </div>
         <div style="padding:20px;">
         <h2>Welcome back!</h2>
-        <p>Top headlines from around the simulated web:</p>
+        <p>Top headlines:</p>
         <ul>
         <li><a href="http://xphome.local/">Set your homepage to XP Home</a></li>
         <li><a href="http://www.example.com/">Visit Example.com</a></li>
         <li><a href="http://www.google.com/">Search the web with Google</a></li>
+        <li><a href="http://xphome.local/changelog.html">What's new in Windows XP</a></li>
         </ul>
-        <p style="color:#888;">This is a simulated offline page inside Windows XP (Simulated Edition).</p>
         </div>
         </body>
         """,
@@ -38,6 +39,43 @@ PAGES = {
         <h1 style="color:#123a7a;">Welcome to Windows XP</h1>
         <p>This computer is protected and running smoothly.</p>
         <p><a href="http://www.msn.com/">Go to MSN.com</a></p>
+        <p><a href="http://xphome.local/changelog.html">View Windows XP update history</a></p>
+        </body>
+        """,
+    ),
+    "http://xphome.local/changelog.html": (
+        "Windows XP Update History",
+        """
+        <body style="font-family: Tahoma; background:#ffffff; margin:0;">
+        <div style="background:#123a7a; padding:14px 20px;">
+        <span style="color:white; font-size:22px; font-weight:bold;">Windows Update</span>
+        <span style="color:#bcd7ff; font-size:13px;"> &nbsp; Update History</span>
+        </div>
+        <div style="padding:20px;">
+        <h2>Recently installed updates</h2>
+        <table cellpadding="6" style="border-collapse:collapse; width:100%;">
+        <tr style="background:#e8eefc;"><td><b>KB899901</b></td>
+        <td>Windows Task Manager is now available from the taskbar and Ctrl+Shift+Esc.</td></tr>
+        <tr><td><b>KB899884</b></td>
+        <td>Fixed an issue where selecting a desktop icon shortly after creating a new
+        file could cause Explorer to stop responding.</td></tr>
+        <tr style="background:#e8eefc;"><td><b>KB899867</b></td>
+        <td>Menu bars in Notepad, WordPad, Paint, Internet Explorer, and Minesweeper
+        now render correctly within the application window on all configurations.</td></tr>
+        <tr><td><b>KB899850</b></td>
+        <td>Updated message boxes and dialogs throughout the shell to use the Luna
+        visual style.</td></tr>
+        <tr style="background:#e8eefc;"><td><b>KB899833</b></td>
+        <td>The All Programs menu now opens correctly from the Start menu.</td></tr>
+        <tr><td><b>KB899812</b></td>
+        <td>Added rounded window corners and drop shadows for improved visual
+        consistency with the Luna theme.</td></tr>
+        <tr style="background:#e8eefc;"><td><b>KB899795</b></td>
+        <td>Improved system stability. Ending certain critical system processes
+        from Task Manager may still result in a Stop error.</td></tr>
+        </table>
+        <p style="margin-top:16px;"><a href="http://www.msn.com/">Back to MSN.com</a></p>
+        </div>
         </body>
         """,
     ),
@@ -48,7 +86,7 @@ PAGES = {
         <h1 style="font-size:52px;"><span style="color:#4285F4;">G</span><span style="color:#EA4335;">o</span>
         <span style="color:#FBBC05;">o</span><span style="color:#4285F4;">g</span>
         <span style="color:#34A853;">l</span><span style="color:#EA4335;">e</span></h1>
-        <p style="color:#888;">(simulated search - no network access in this sandbox)</p>
+        <p style="color:#888;">About 4,150,000,000 results (0.42 seconds)</p>
         <p><a href="http://www.msn.com/">Back to MSN</a></p>
         </body>
         """,
@@ -100,6 +138,7 @@ class IEWindow(XPWindow):
     def _build_menu(self):
         from PyQt6.QtWidgets import QMenuBar
         bar = QMenuBar()
+        theme.style_menubar(bar)
         bar.addMenu("&File")
         bar.addMenu("&Edit")
         bar.addMenu("&View")

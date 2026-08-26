@@ -3,17 +3,19 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-    QPushButton, QVBoxLayout,
+    QPushButton, QVBoxLayout, QWidget,
 )
 
 from . import icons, theme, vfs as vfs_mod
+from .xp_dialog import DIALOG_BUTTON_QSS, build_dialog_frame
+
+KIND_ICONS = {vfs_mod.TEXT: "text_file", vfs_mod.RICH: "wordpad", vfs_mod.IMAGE: "bitmap_file"}
 
 
 class VfsFileDialog(QDialog):
     def __init__(self, parent, title, save_mode=False, kinds=(vfs_mod.TEXT,), default_name=""):
-        super().__init__(parent)
-        self.setWindowTitle(title)
-        self.setStyleSheet(theme.WINDOW_QSS)
+        super().__init__(parent, Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        self.setModal(True)
         self.resize(480, 380)
         self.save_mode = save_mode
         self.kinds = kinds
@@ -21,19 +23,28 @@ class VfsFileDialog(QDialog):
         self.result_name = default_name
         self.current_folder = vfs_mod.vfs.my_docs_id
 
-        root = QVBoxLayout(self)
+        inner = build_dialog_frame(self, title)
+
+        body = QWidget()
+        body.setStyleSheet(f"QWidget {{ background: {theme.XP_WINDOW_BG}; }} {DIALOG_BUTTON_QSS}")
+        root = QVBoxLayout(body)
+        root.setContentsMargins(12, 10, 12, 10)
 
         self.path_label = QLabel()
+        self.path_label.setStyleSheet("background: transparent;")
         root.addWidget(self.path_label)
 
         self.list = QListWidget()
+        self.list.setStyleSheet("background: white;")
         self.list.setIconSize(icons.icon("folder", 24).availableSizes()[0] if icons.icon("folder", 24).availableSizes() else self.list.iconSize())
         self.list.itemDoubleClicked.connect(self._on_double)
         self.list.itemClicked.connect(self._on_click)
         root.addWidget(self.list, 1)
 
         name_row = QHBoxLayout()
-        name_row.addWidget(QLabel("File name:"))
+        name_label = QLabel("File name:")
+        name_label.setStyleSheet("background: transparent;")
+        name_row.addWidget(name_label)
         self.name_edit = QLineEdit(default_name)
         self.name_edit.setEnabled(save_mode)
         name_row.addWidget(self.name_edit, 1)
@@ -43,13 +54,16 @@ class VfsFileDialog(QDialog):
         btn_row.addStretch(1)
         ok_text = "Save" if save_mode else "Open"
         self.ok_btn = QPushButton(ok_text)
+        self.ok_btn.setMinimumWidth(75)
         self.ok_btn.clicked.connect(self._accept)
         cancel_btn = QPushButton("Cancel")
+        cancel_btn.setMinimumWidth(75)
         cancel_btn.clicked.connect(self.reject)
         btn_row.addWidget(self.ok_btn)
         btn_row.addWidget(cancel_btn)
         root.addLayout(btn_row)
 
+        inner.addWidget(body)
         self._refresh()
 
     def _refresh(self):
@@ -66,7 +80,7 @@ class VfsFileDialog(QDialog):
                 item.setData(Qt.ItemDataRole.UserRole, ("folder", child.id))
                 self.list.addItem(item)
             elif child.kind in self.kinds:
-                key = "text_file" if child.kind == vfs_mod.TEXT else "wordpad"
+                key = KIND_ICONS.get(child.kind, "text_file")
                 item = QListWidgetItem(icons.icon(key, 20), child.name)
                 item.setData(Qt.ItemDataRole.UserRole, ("file", child.id))
                 self.list.addItem(item)

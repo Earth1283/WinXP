@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QPoint, QSize, Qt, pyqtSignal
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMenu, QPushButton, QVBoxLayout, QWidget
 
 from . import icons
+from .app_registry import APPS
 
 
 class StartMenuItem(QPushButton):
@@ -77,17 +78,11 @@ class StartMenu(QWidget):
         left_l.setContentsMargins(6, 8, 6, 8)
         left_l.setSpacing(2)
 
-        pinned = [
-            ("Internet Explorer", "ie", "ie"),
-            ("Notepad", "notepad", "notepad"),
-            ("WordPad", "wordpad", "wordpad"),
-            ("Calculator", "calculator", "calculator"),
-            ("Paint", "paint", "paint"),
-            ("Minesweeper", "minesweeper", "minesweeper"),
-        ]
-        for label, app_id, ic in pinned:
-            btn = StartMenuItem(label, ic, size=28)
-            btn.clicked.connect(lambda _, a=app_id: self._choose(a))
+        for spec in APPS:
+            if not spec.pinned:
+                continue
+            btn = StartMenuItem(spec.title, spec.icon, size=28)
+            btn.clicked.connect(lambda _, a=spec.id: self._choose(a))
             left_l.addWidget(btn)
 
         left_l.addStretch(1)
@@ -97,7 +92,7 @@ class StartMenu(QWidget):
         left_l.addWidget(sep)
 
         allprog = StartMenuItem("All Programs", "control_panel", size=20, bold=True)
-        allprog.clicked.connect(lambda: None)
+        allprog.clicked.connect(lambda: self._show_all_programs(allprog))
         left_l.addWidget(allprog)
 
         body_l.addWidget(left, 1)
@@ -134,6 +129,25 @@ class StartMenu(QWidget):
         fl.addWidget(logoff)
         fl.addWidget(shutdown)
         root.addWidget(footer)
+
+    def _show_all_programs(self, anchor):
+        menu = QMenu(self)
+        menu.setStyleSheet(
+            "QMenu { background: white; border: 1px solid #716f64; }"
+            "QMenu::item { padding: 4px 24px 4px 12px; }"
+            "QMenu::item:selected { background: #2f71e6; color: white; }"
+        )
+        seen_unpinned = False
+        for spec in APPS:
+            if not spec.all_programs:
+                continue
+            if not spec.pinned and not seen_unpinned:
+                menu.addSeparator()
+                seen_unpinned = True
+            act = menu.addAction(icons.icon(spec.icon, 18), spec.title)
+            act.triggered.connect(lambda _, a=spec.id: self._choose(a))
+        pos = anchor.mapToGlobal(QPoint(anchor.width(), 0))
+        menu.exec(pos)
 
     def _choose(self, app_id):
         self.hide()

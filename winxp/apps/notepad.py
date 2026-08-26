@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtGui import QAction, QFont
-from PyQt6.QtWidgets import QMessageBox, QPlainTextEdit, QVBoxLayout
+from PyQt6.QtWidgets import QPlainTextEdit, QVBoxLayout
 
-from .. import vfs as vfs_mod
+from .. import theme, vfs as vfs_mod
 from ..vfs_dialog import VfsFileDialog
 from ..window_manager import XPWindow
+from ..xp_dialog import XPMessageBox
 
 
 class NotepadWindow(XPWindow):
@@ -29,13 +30,14 @@ class NotepadWindow(XPWindow):
         if node_id:
             node = vfs_mod.vfs.get(node_id)
             if node:
-                self.editor.setPlainText(node.content)
+                self.editor.setPlainText(vfs_mod.vfs.read_content(node_id))
                 self.dirty = False
                 self._retitle(node.name)
 
     def _build_menu(self):
         from PyQt6.QtWidgets import QMenuBar
         bar = QMenuBar()
+        theme.style_menubar(bar)
 
         file_menu = bar.addMenu("&File")
         file_menu.addAction(self._act("&New", self.new_file))
@@ -94,7 +96,7 @@ class NotepadWindow(XPWindow):
         if node_id:
             node = vfs_mod.vfs.get(node_id)
             self.node_id = node_id
-            self.editor.setPlainText(node.content)
+            self.editor.setPlainText(vfs_mod.vfs.read_content(node_id))
             self.dirty = False
             self._retitle(node.name)
 
@@ -126,4 +128,8 @@ class NotepadWindow(XPWindow):
         self._retitle(vfs_mod.vfs.get(self.node_id).name)
 
     def _about(self):
-        QMessageBox.information(self, "About Notepad", "Notepad\nSimulated Windows XP Edition")
+        XPMessageBox.information(
+            self, "About Notepad",
+            "Notepad\nVersion 5.1 (Build 2600.xpsp_sp3)\n\n"
+            "© Microsoft Corporation. All rights reserved."
+        )

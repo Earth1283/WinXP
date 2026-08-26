@@ -30,4 +30,6 @@ class PowerScreen(QWidget):
     def _finish_logoff(self, wm):
         for window in list(wm.windows):
             window.close()
+        from ..corruption import health
+        health.reset()
         self.close()

@@ -4,7 +4,7 @@ from PyQt6.QtCore import QSize
 from PyQt6.QtGui import QAction, QFont, QTextCharFormat
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QMessageBox, QTextEdit, QToolBar, QVBoxLayout, QWidget
 
-from .. import vfs as vfs_mod
+from .. import theme, vfs as vfs_mod
 from ..vfs_dialog import VfsFileDialog
 from ..window_manager import XPWindow
 
@@ -28,12 +28,13 @@ class WordPadWindow(XPWindow):
         if node_id:
             node = vfs_mod.vfs.get(node_id)
             if node:
-                self.editor.setHtml(node.content)
+                self.editor.setHtml(vfs_mod.vfs.read_content(node_id))
                 self._retitle(node.name)
 
     def _build_menu(self):
         from PyQt6.QtWidgets import QMenuBar
         bar = QMenuBar()
+        theme.style_menubar(bar)
         file_menu = bar.addMenu("&File")
         file_menu.addAction(self._act("&New", self.new_file))
         file_menu.addAction(self._act("&Open...", self.open_file))
@@ -104,7 +105,7 @@ class WordPadWindow(XPWindow):
         if node_id:
             node = vfs_mod.vfs.get(node_id)
             self.node_id = node_id
-            self.editor.setHtml(node.content)
+            self.editor.setHtml(vfs_mod.vfs.read_content(node_id))
             self._retitle(node.name)
 
     def save_file(self):
@@ -128,8 +129,9 @@ class WordPadWindow(XPWindow):
             self.node_id = existing.id
         else:
             parent = vfs_mod.vfs.get(folder_id)
-            node = vfs_mod.vfs._new(vfs_mod.RICH, name, folder_id, content=content)
+            node = vfs_mod.vfs._new(vfs_mod.RICH, name, folder_id)
             parent.children.append(node.id)
             vfs_mod.vfs.save()
+            vfs_mod.vfs.write_content(node.id, content)
             self.node_id = node.id
         self._retitle(vfs_mod.vfs.get(self.node_id).name)

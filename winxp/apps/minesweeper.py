@@ -6,6 +6,7 @@ from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QFont, QPainter, QPen, QPolygon
 from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
+from .. import theme
 from ..window_manager import XPWindow
 
 DIFFICULTIES = {
@@ -143,6 +144,7 @@ class MinesweeperWindow(XPWindow):
     def _build_menu(self):
         from PyQt6.QtWidgets import QMenuBar
         bar = QMenuBar()
+        theme.style_menubar(bar)
         game_menu = bar.addMenu("&Game")
         for label in DIFFICULTIES:
             act = QAction(label, self)

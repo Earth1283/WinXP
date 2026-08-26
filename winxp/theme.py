@@ -37,6 +37,58 @@ START_BUTTON_GRADIENT = """
         stop:0 #6fcf4a, stop:0.4 #3fa129, stop:1 #1a6e0a)
 """
 
+MENU_QSS = f"""
+QMenuBar {{
+    background: {XP_WINDOW_BG};
+    border-bottom: 1px solid #aca998;
+    padding: 1px 2px;
+    spacing: 0px;
+}}
+QMenuBar::item {{
+    background: transparent;
+    color: black;
+    padding: 3px 8px;
+    margin: 0px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+}}
+QMenuBar::item:selected {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #eaf3ff, stop:1 #c2ddfc);
+    border: 1px solid #7da2ce;
+}}
+QMenuBar::item:pressed {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #c2ddfc, stop:1 #a6c8ee);
+    border: 1px solid #3169c6;
+}}
+QMenu {{
+    background: white;
+    color: black;
+    border: 1px solid #716f64;
+    padding: 2px 0px;
+}}
+QMenu::item {{
+    color: black;
+    padding: 4px 24px 4px 20px;
+}}
+QMenu::item:selected {{
+    background: {XP_SELECTION_BLUE};
+    color: white;
+}}
+QMenu::item:disabled {{
+    color: #888888;
+}}
+QMenu::separator {{
+    height: 1px;
+    background: #d4d0c8;
+    margin: 3px 4px;
+}}
+QMenu::icon {{
+    padding-left: 4px;
+}}
+"""
+
 WINDOW_QSS = f"""
 QWidget {{
     font-family: '{FONT_FAMILY}';
@@ -61,30 +113,7 @@ QPushButton:hover {{
 QPushButton:pressed {{
     background: #ffce4d;
 }}
-QMenuBar {{
-    background: {XP_WINDOW_BG};
-    border-bottom: 1px solid #aca998;
-}}
-QMenuBar::item:selected {{
-    background: {XP_SELECTION_BLUE};
-    color: white;
-}}
-QMenu {{
-    background: white;
-    color: black;
-    border: 1px solid #716f64;
-}}
-QMenu::item {{
-    color: black;
-    padding: 4px 24px 4px 12px;
-}}
-QMenu::item:selected {{
-    background: {XP_SELECTION_BLUE};
-    color: white;
-}}
-QMenu::item:disabled {{
-    color: #888888;
-}}
+{MENU_QSS}
 QScrollBar:vertical {{
     background: #ece9d8;
     width: 17px;
@@ -111,3 +140,10 @@ QStatusBar {{
     border-top: 1px solid #aca998;
 }}
 """
+
+
+def style_menubar(bar):
+    """Force the menu bar to render inside the window instead of the OS's
+    native global menu bar (macOS), and give it authentic Luna chrome."""
+    bar.setNativeMenuBar(False)
+    bar.setStyleSheet(MENU_QSS)

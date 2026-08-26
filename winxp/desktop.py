@@ -1,19 +1,25 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QPoint, QRect, QSize, Qt
-from PyQt6.QtGui import QColor, QPainter
+import random
+
+from PyQt6.QtCore import QPoint, QRect, QSize, Qt, QTimer
+from PyQt6.QtGui import QColor, QKeySequence, QPainter, QShortcut
 from PyQt6.QtWidgets import (
-    QApplication, QInputDialog, QLabel, QMenu, QMessageBox, QVBoxLayout, QWidget,
+    QApplication, QInputDialog, QLabel, QMenu, QVBoxLayout, QWidget,
 )
 
-from . import apps, icons, theme, vfs as vfs_mod
+from . import apps, corruption, icons, theme, vfs as vfs_mod, xp_dialog
 from .settings import WALLPAPERS, settings
 from .start_menu import StartMenu
 from .taskbar import Taskbar
 from .window_manager import WindowManager
 
 ICON_CELL = QSize(80, 90)
-FILE_ICONS = {vfs_mod.TEXT: "text_file", vfs_mod.RICH: "wordpad", vfs_mod.FOLDER: "folder"}
+FILE_ICONS = {
+    vfs_mod.TEXT: "text_file", vfs_mod.RICH: "wordpad",
+    vfs_mod.IMAGE: "bitmap_file", vfs_mod.AUDIO: "audio_file",
+    vfs_mod.FOLDER: "folder",
+}
 
 
 class DesktopIcon(QWidget):
@@ -107,6 +113,14 @@ class Desktop(QWidget):
         self.taskbar = Taskbar(self)
         self.taskbar.start_clicked.connect(self._toggle_start)
         self.taskbar.task_clicked.connect(self._on_task_clicked)
+        self.taskbar.task_manager_requested.connect(self._open_task_manager)
+
+        QShortcut(QKeySequence("Ctrl+Shift+Esc"), self, self._open_task_manager)
+
+        self._wallpaper_glitch = False
+        self._glitch_timer = QTimer(self)
+        self._glitch_timer.timeout.connect(self._glitch_tick)
+        self._glitch_timer.start(3000)
 
         self.start_menu = StartMenu(self)
         self.start_menu.app_chosen.connect(self._launch)
@@ -143,6 +157,48 @@ class Desktop(QWidget):
                 )
                 p.setPen(c)
                 p.drawLine(0, y, self.width(), y)
+        if self._wallpaper_glitch:
+            for _ in range(40):
+                bw = random.randint(20, 160)
+                bh = random.randint(2, 14)
+                bx = random.randint(0, max(1, self.width() - bw))
+                by = random.randint(0, max(1, self.height() - 34 - bh))
+                p.fillRect(bx, by, bw, bh, QColor(random.choice(
+                    ["#ff00ff", "#00ffff", "#ffffff", "#000000", "#ff2020"]
+                )))
+
+    def flash_wallpaper_glitch(self):
+        self._wallpaper_glitch = True
+        self.update()
+        QTimer.singleShot(260, self._clear_wallpaper_glitch)
+
+    def _clear_wallpaper_glitch(self):
+        self._wallpaper_glitch = False
+        self.update()
+
+    def _glitch_tick(self):
+        health = corruption.health
+        if health.level <= 0:
+            return
+        if health.is_dead("csrss.exe"):
+            for w in self.wm.windows:
+                if w.isVisible() and random.random() < 0.5:
+                    w.titlebar.flash_glitch()
+        if health.is_dead("winlogon.exe") and random.random() < 0.6:
+            self.flash_wallpaper_glitch()
+        if health.is_dead("services.exe") and random.random() < 0.4:
+            candidates = [w for w in self.wm.windows
+                          if w.isVisible() and getattr(w, "_app_key", None) != "task_manager"]
+            if candidates:
+                random.choice(candidates).freeze(random.randint(2500, 5000))
+        if health.is_dead("lsass.exe") and random.random() < 0.2:
+            xp_dialog.XPMessageBox.critical(
+                self, "Security Alert",
+                "Access is denied.\n\nThe Local Security Authority cannot be contacted."
+            )
+        if random.random() < health.level * 0.05:
+            from .apps.bsod import crash
+            crash(self.wm, "cascading system failure")
 
     def mousePressEvent(self, ev):
         self.select_only(None)
@@ -150,9 +206,11 @@ class Desktop(QWidget):
             self.show_desktop_menu(ev.globalPosition().toPoint())
 
     def _layout_icons(self):
+        selected_node = self.selected_icon.node_id if self.selected_icon is not None else None
         for w in self.icons_widgets.values():
             w.deleteLater()
         self.icons_widgets.clear()
+        self.selected_icon = None
 
         children = sorted(
             vfs_mod.vfs.children_of(vfs_mod.vfs.desktop_id),
@@ -168,6 +226,8 @@ class Desktop(QWidget):
             icon_w.move(margin + col * ICON_CELL.width(), margin + row * ICON_CELL.height())
             icon_w.show()
             self.icons_widgets[node.id] = icon_w
+            if node.id == selected_node:
+                self.select_only(icon_w)
 
     def select_only(self, widget):
         if self.selected_icon is not None:
@@ -188,9 +248,20 @@ class Desktop(QWidget):
             self._launch(f"notepad:{node_id}")
         elif node.kind == vfs_mod.RICH:
             self._launch(f"wordpad:{node_id}")
+        elif node.kind == vfs_mod.IMAGE:
+            self._launch(f"paint:{node_id}")
+        elif node.kind == vfs_mod.AUDIO:
+            self._launch(f"wmp:{node_id}")
 
     def _launch(self, target):
         apps.launch(self.wm, target)
+
+    def _open_task_manager(self):
+        for window in self.wm.windows:
+            if getattr(window, "_app_key", None) == "task_manager":
+                self.wm.restore(window)
+                return
+        self._launch("task_manager")
 
     def show_icon_menu(self, node_id, global_pos):
         node = vfs_mod.vfs.get(node_id)
@@ -211,6 +282,8 @@ class Desktop(QWidget):
         folder_act.triggered.connect(self._new_folder)
         text_act = new_menu.addAction("Text Document")
         text_act.triggered.connect(self._new_text)
+        image_act = new_menu.addAction("Bitmap Image")
+        image_act.triggered.connect(self._new_image)
         menu.addSeparator()
         refresh_act = menu.addAction("Refresh")
         refresh_act.triggered.connect(self._layout_icons)
@@ -227,6 +300,13 @@ class Desktop(QWidget):
         vfs_mod.vfs.create_text_file(vfs_mod.vfs.desktop_id)
         self._layout_icons()
 
+    def _new_image(self):
+        from . import image_codec
+        vfs_mod.vfs.create_image_file(
+            vfs_mod.vfs.desktop_id, data=image_codec.to_bytes(image_codec.blank())
+        )
+        self._layout_icons()
+
     def _rename_icon(self, node_id):
         node = vfs_mod.vfs.get(node_id)
         name, ok = QInputDialog.getText(self, "Rename", "New name:", text=node.name)
@@ -236,8 +316,7 @@ class Desktop(QWidget):
 
     def _delete_icon(self, node_id):
         node = vfs_mod.vfs.get(node_id)
-        reply = QMessageBox.question(self, "Confirm Delete", f"Delete '{node.name}'?")
-        if reply == QMessageBox.StandardButton.Yes:
+        if xp_dialog.XPMessageBox.confirm(self, "Confirm Delete", f"Delete '{node.name}'?"):
             if node.kind == vfs_mod.SHORTCUT:
                 vfs_mod.vfs.delete(node_id, permanent=True)
             else:

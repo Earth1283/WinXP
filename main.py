@@ -29,6 +29,7 @@ def _light_palette():
 
 
 def main():
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_DontUseNativeMenuBar, True)
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setPalette(_light_palette())

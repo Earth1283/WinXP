@@ -3,14 +3,18 @@ from __future__ import annotations
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtWidgets import (
     QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-    QMenu, QMessageBox, QPushButton, QSplitter, QStatusBar, QToolBar, QTreeWidget,
+    QMenu, QPushButton, QSplitter, QStatusBar, QToolBar, QTreeWidget,
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
 from .. import icons, vfs as vfs_mod
 from ..window_manager import XPWindow
+from ..xp_dialog import XPMessageBox
 
-FILE_ICONS = {vfs_mod.TEXT: "text_file", vfs_mod.RICH: "wordpad"}
+FILE_ICONS = {
+    vfs_mod.TEXT: "text_file", vfs_mod.RICH: "wordpad",
+    vfs_mod.IMAGE: "bitmap_file", vfs_mod.AUDIO: "audio_file",
+}
 
 
 class ExplorerWindow(XPWindow):
@@ -138,6 +142,10 @@ class ExplorerWindow(XPWindow):
             launch(self.wm, f"notepad:{node_id}")
         elif node.kind == vfs_mod.RICH:
             launch(self.wm, f"wordpad:{node_id}")
+        elif node.kind == vfs_mod.IMAGE:
+            launch(self.wm, f"paint:{node_id}")
+        elif node.kind == vfs_mod.AUDIO:
+            launch(self.wm, f"wmp:{node_id}")
         elif node.kind == vfs_mod.SHORTCUT:
             launch(self.wm, node.target)
 
@@ -168,6 +176,8 @@ class ExplorerWindow(XPWindow):
             folder_act.triggered.connect(self._new_folder)
             text_act = new_menu.addAction("Text Document")
             text_act.triggered.connect(self._new_text)
+            image_act = new_menu.addAction("Bitmap Image")
+            image_act.triggered.connect(self._new_image)
             refresh_act = menu.addAction("Refresh")
             refresh_act.triggered.connect(self._refresh_list)
         menu.exec(self.list.mapToGlobal(pos))
@@ -179,6 +189,11 @@ class ExplorerWindow(XPWindow):
 
     def _new_text(self):
         vfs_mod.vfs.create_text_file(self.current)
+        self._refresh_list()
+
+    def _new_image(self):
+        from .. import image_codec
+        vfs_mod.vfs.create_image_file(self.current, data=image_codec.to_bytes(image_codec.blank()))
         self._refresh_list()
 
     def _rename(self, node_id):
@@ -193,8 +208,7 @@ class ExplorerWindow(XPWindow):
         node = vfs_mod.vfs.get(node_id)
         permanent = node.parent == vfs_mod.vfs.recycle_id
         msg = "Permanently delete" if permanent else "Move to Recycle Bin:"
-        reply = QMessageBox.question(self, "Confirm Delete", f"{msg} '{node.name}'?")
-        if reply == QMessageBox.StandardButton.Yes:
+        if XPMessageBox.confirm(self, "Confirm Delete", f"{msg} '{node.name}'?"):
             vfs_mod.vfs.delete(node_id, permanent=permanent)
             self._refresh_list()
             self._rebuild_tree()
