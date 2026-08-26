@@ -6,6 +6,11 @@ __pycache__/
 # C extensions
 *.so
 
+# Nuitka build output (installer/ compiles to a standalone binary via CI)
+*.build/
+*.dist/
+*.onefile-build/
+
 # Distribution / packaging
 .Python
 build/
