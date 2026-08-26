@@ -83,6 +83,8 @@ def _draw(name: str, size: int) -> QPixmap:
         _draw_bitmap_file(p, s)
     elif name == "audio_file":
         _draw_audio_file(p, s)
+    elif name == "video_file":
+        _draw_video_file(p, s)
     elif name == "wmp":
         _draw_wmp(p, s)
     elif name == "tool_pencil":
@@ -372,6 +374,38 @@ def _draw_audio_file(p, s):
     note_r = s * 0.06
     p.drawEllipse(QPoint(int(stem_x1), int(head_y)), int(note_r), int(note_r * 0.8))
     p.drawEllipse(QPoint(int(stem_x2), int(head_y - r.height() * 0.05)), int(note_r), int(note_r * 0.8))
+
+
+def _draw_video_file(p, s):
+    r = QRectF(s * 0.20, s * 0.06, s * 0.60, s * 0.86)
+    p.setPen(QPen(QColor("#555"), 1))
+    p.setBrush(QColor("white"))
+    poly = QPolygon([
+        QPoint(int(r.left()), int(r.top())),
+        QPoint(int(r.right() - s * 0.14), int(r.top())),
+        QPoint(int(r.right()), int(r.top() + s * 0.14)),
+        QPoint(int(r.right()), int(r.bottom())),
+        QPoint(int(r.left()), int(r.bottom())),
+    ])
+    p.drawPolygon(poly)
+    p.setBrush(QColor("#c8c8c8"))
+    p.drawPolygon(QPolygon([
+        QPoint(int(r.right() - s * 0.14), int(r.top())),
+        QPoint(int(r.right()), int(r.top() + s * 0.14)),
+        QPoint(int(r.right() - s * 0.14), int(r.top() + s * 0.14)),
+    ]))
+    screen = QRectF(r.left() + s * 0.06, r.top() + s * 0.30, r.width() - s * 0.12, s * 0.34)
+    p.setPen(QPen(QColor("#333"), 1))
+    p.setBrush(QColor("#222"))
+    p.drawRoundedRect(screen, s * 0.02, s * 0.02)
+    tri = QPolygon([
+        QPoint(int(screen.left() + screen.width() * 0.38), int(screen.top() + screen.height() * 0.25)),
+        QPoint(int(screen.left() + screen.width() * 0.38), int(screen.bottom() - screen.height() * 0.25)),
+        QPoint(int(screen.left() + screen.width() * 0.68), int(screen.top() + screen.height() * 0.5)),
+    ])
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor("#7fd0ff"))
+    p.drawPolygon(tri)
 
 
 def _draw_wmp(p, s):

@@ -18,7 +18,7 @@ ICON_CELL = QSize(80, 90)
 FILE_ICONS = {
     vfs_mod.TEXT: "text_file", vfs_mod.RICH: "wordpad",
     vfs_mod.IMAGE: "bitmap_file", vfs_mod.AUDIO: "audio_file",
-    vfs_mod.FOLDER: "folder",
+    vfs_mod.VIDEO: "video_file", vfs_mod.FOLDER: "folder",
 }
 
 
@@ -250,7 +250,7 @@ class Desktop(QWidget):
             self._launch(f"wordpad:{node_id}")
         elif node.kind == vfs_mod.IMAGE:
             self._launch(f"paint:{node_id}")
-        elif node.kind == vfs_mod.AUDIO:
+        elif node.kind in (vfs_mod.AUDIO, vfs_mod.VIDEO):
             self._launch(f"wmp:{node_id}")
 
     def _launch(self, target):

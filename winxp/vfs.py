@@ -27,6 +27,7 @@ TEXT = "text"          # Notepad plain text file
 RICH = "rich"          # WordPad rich text (HTML) file
 IMAGE = "image"        # Paint bitmap file (PNG)
 AUDIO = "audio"        # Media Player track (extension varies per imported file)
+VIDEO = "video"        # Media Player clip (extension varies per imported file)
 SHORTCUT = "shortcut"  # desktop shortcut to an app
 
 CONTENT_EXT = {TEXT: ".txt", RICH: ".html", IMAGE: ".png"}
@@ -285,9 +286,15 @@ class VFS:
         return node
 
     def create_audio_file(self, parent_id, name, data: bytes, ext):
+        return self._create_media_file(AUDIO, parent_id, name, data, ext)
+
+    def create_video_file(self, parent_id, name, data: bytes, ext):
+        return self._create_media_file(VIDEO, parent_id, name, data, ext)
+
+    def _create_media_file(self, kind, parent_id, name, data: bytes, ext):
         parent = self.get(parent_id)
         name = self._unique_name(parent_id, name)
-        node = self._new(AUDIO, name, parent_id, ext=ext)
+        node = self._new(kind, name, parent_id, ext=ext)
         parent.children.append(node.id)
         self.save()
         if data:

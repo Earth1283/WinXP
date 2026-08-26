@@ -6,16 +6,23 @@ import random
 from PyQt6.QtCore import QPoint, QSize, Qt, QTimer, QUrl
 from PyQt6.QtGui import QAction, QColor, QPainter, QPen, QPolygon
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtWidgets import (
     QFileDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton,
-    QSlider, QVBoxLayout, QWidget,
+    QSlider, QStackedLayout, QVBoxLayout, QWidget,
 )
 
 from .. import icons, theme, vfs as vfs_mod
 from ..window_manager import XPWindow
 from ..xp_dialog import XPMessageBox
 
-AUDIO_FILTER = "Audio Files (*.mp3 *.wav *.ogg *.flac *.m4a *.aac *.wma)"
+AUDIO_EXTS = {".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac", ".wma"}
+VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".wmv"}
+MEDIA_FILTER = (
+    "Media Files (*.mp3 *.wav *.ogg *.flac *.m4a *.aac *.wma "
+    "*.mp4 *.mov *.avi *.mkv *.webm *.m4v *.wmv)"
+)
+FILE_ICON_BY_KIND = {vfs_mod.VIDEO: "video_file"}  # else falls back to audio_file
 
 SLIDER_QSS = """
     QSlider::groove:horizontal { height: 4px; background: #aca998; border-radius: 2px; }
@@ -185,8 +192,16 @@ class WindowsMediaPlayerWindow(XPWindow):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
 
+        self.stack = QStackedLayout()
         self.visualizer = Visualizer()
-        layout.addWidget(self.visualizer, 1)
+        self.video_widget = QVideoWidget()
+        self.video_widget.setStyleSheet("background: black;")
+        self.stack.addWidget(self.visualizer)
+        self.stack.addWidget(self.video_widget)
+        stack_container = QWidget()
+        stack_container.setLayout(self.stack)
+        layout.addWidget(stack_container, 1)
+        self.player.setVideoOutput(self.video_widget)
 
         self.now_playing = QLabel("No track selected")
         self.now_playing.setStyleSheet("background: transparent; font-weight: bold;")
@@ -255,9 +270,10 @@ class WindowsMediaPlayerWindow(XPWindow):
         self._track_ids = []
         children = sorted(vfs_mod.vfs.children_of(vfs_mod.vfs.my_music_id), key=lambda n: n.name.lower())
         for child in children:
-            if child.kind != vfs_mod.AUDIO:
+            if child.kind not in (vfs_mod.AUDIO, vfs_mod.VIDEO):
                 continue
-            item = QListWidgetItem(icons.icon("audio_file", 18), child.name)
+            icon_key = FILE_ICON_BY_KIND.get(child.kind, "audio_file")
+            item = QListWidgetItem(icons.icon(icon_key, 18), child.name)
             item.setData(Qt.ItemDataRole.UserRole, child.id)
             self.list.addItem(item)
             self._track_ids.append(child.id)
@@ -275,6 +291,7 @@ class WindowsMediaPlayerWindow(XPWindow):
             XPMessageBox.critical(self, "Windows Media Player", f"Cannot find '{node.name}'.")
             return
         self._current_id = node_id
+        self.stack.setCurrentWidget(self.video_widget if node.kind == vfs_mod.VIDEO else self.visualizer)
         self.player.setSource(QUrl.fromLocalFile(path))
         self.player.play()
         self.now_playing.setText(node.name)
@@ -335,7 +352,7 @@ class WindowsMediaPlayerWindow(XPWindow):
     # -- import from the real host filesystem ------------------------------
     def _import_from_computer(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Import into Media Library", os.path.expanduser("~"), AUDIO_FILTER
+            self, "Import into Media Library", os.path.expanduser("~"), MEDIA_FILTER
         )
         if not path:
             return
@@ -345,9 +362,12 @@ class WindowsMediaPlayerWindow(XPWindow):
         except OSError:
             XPMessageBox.critical(self, "Windows Media Player", "Unable to read the selected file.")
             return
-        ext = os.path.splitext(path)[1].lower() or ".mp3"
+        ext = os.path.splitext(path)[1].lower()
         name = os.path.basename(path)
-        node = vfs_mod.vfs.create_audio_file(vfs_mod.vfs.my_music_id, name, data, ext)
+        if ext in VIDEO_EXTS:
+            node = vfs_mod.vfs.create_video_file(vfs_mod.vfs.my_music_id, name, data, ext or ".mp4")
+        else:
+            node = vfs_mod.vfs.create_audio_file(vfs_mod.vfs.my_music_id, name, data, ext or ".mp3")
         self._load_playlist()
         self._play_track(node.id)
 

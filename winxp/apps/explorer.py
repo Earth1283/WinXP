@@ -14,6 +14,7 @@ from ..xp_dialog import XPMessageBox
 FILE_ICONS = {
     vfs_mod.TEXT: "text_file", vfs_mod.RICH: "wordpad",
     vfs_mod.IMAGE: "bitmap_file", vfs_mod.AUDIO: "audio_file",
+    vfs_mod.VIDEO: "video_file",
 }
 
 
@@ -144,7 +145,7 @@ class ExplorerWindow(XPWindow):
             launch(self.wm, f"wordpad:{node_id}")
         elif node.kind == vfs_mod.IMAGE:
             launch(self.wm, f"paint:{node_id}")
-        elif node.kind == vfs_mod.AUDIO:
+        elif node.kind in (vfs_mod.AUDIO, vfs_mod.VIDEO):
             launch(self.wm, f"wmp:{node_id}")
         elif node.kind == vfs_mod.SHORTCUT:
             launch(self.wm, node.target)
