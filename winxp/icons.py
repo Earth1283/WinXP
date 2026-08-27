@@ -1,8 +1,13 @@
 """Procedurally-drawn XP-style icons (no external image assets needed)."""
 from __future__ import annotations
 
+import os
+
 from PyQt6.QtCore import QRect, QRectF, Qt
-from PyQt6.QtGui import QBrush, QColor, QIcon, QLinearGradient, QPainter, QPen, QPixmap, QPolygon
+from PyQt6.QtGui import (
+    QBrush, QColor, QIcon, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap,
+    QPolygon,
+)
 from PyQt6.QtCore import QPoint
 
 _CACHE: dict[tuple, QIcon] = {}
@@ -65,6 +70,8 @@ def _draw(name: str, size: int) -> QPixmap:
         _draw_control_panel(p, s)
     elif name == "paint":
         _draw_paint(p, s)
+    elif name == "photochop":
+        _draw_photochop(p, s)
     elif name == "run":
         _draw_run(p, s)
     elif name == "shutdown":
@@ -229,6 +236,32 @@ def _draw_mword(p, s):
     p.setFont(f)
     p.setPen(QColor("white"))
     p.drawText(QRectF(r), Qt.AlignmentFlag.AlignCenter, "W")
+
+
+def _draw_photochop(p, s):
+    path = os.path.join(os.path.dirname(__file__), "assets", "MonaLisa.jpg")
+    img = QImage(path)
+    rect = QRectF(1, 1, s - 2, s - 2)
+    clip = QPainterPath()
+    clip.addRoundedRect(rect, s * 0.12, s * 0.12)
+    if img.isNull():
+        p.setPen(QPen(QColor("#5a4326"), 1))
+        p.setBrush(QColor("#8a6a4a"))
+        p.drawRoundedRect(rect, s * 0.12, s * 0.12)
+        return
+    side = min(img.width(), img.height())
+    x0 = (img.width() - side) // 2
+    y0 = (img.height() - side) // 2
+    cropped = img.copy(x0, y0, side, side).scaled(
+        s, s, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+    )
+    p.save()
+    p.setClipPath(clip)
+    p.drawImage(0, 0, cropped)
+    p.restore()
+    p.setPen(QPen(QColor("#5a4326"), 1))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawRoundedRect(rect, s * 0.12, s * 0.12)
 
 
 def _draw_ie(p, s):
