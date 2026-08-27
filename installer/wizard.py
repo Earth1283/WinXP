@@ -5,12 +5,13 @@ PyQt6 and installer.actions (stdlib-only) are required.
 from __future__ import annotations
 
 import os
+import platform
 import random
 import sys
 import time
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QLinearGradient, QPainter
+from PyQt6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPalette
 from PyQt6.QtWidgets import (
     QApplication, QButtonGroup, QCheckBox, QHBoxLayout, QLabel, QPushButton,
     QRadioButton, QStackedWidget, QVBoxLayout, QWidget,
@@ -18,9 +19,58 @@ from PyQt6.QtWidgets import (
 
 import actions
 
+# Tahoma only exists on Windows -- pick a font that's actually installed on
+# whatever OS this is running under so text doesn't fall back to an ugly
+# generic serif on Linux/mac.
+_SYSTEM = platform.system()
+UI_FONT_FAMILY = {"Windows": "Tahoma", "Darwin": "Helvetica Neue"}.get(_SYSTEM, "DejaVu Sans")
+
 SIDEBAR_BLUE_TOP = "#1657d6"
 SIDEBAR_BLUE_BOTTOM = "#3f8cf6"
 BODY_BG = "#ece9d8"
+TEXT_COLOR = "#000000"
+SUBTEXT_COLOR = "#4a4a4a"
+ACCENT_BLUE = "#1657d6"
+
+BUTTON_STYLE = f"""
+QPushButton {{
+    color: {TEXT_COLOR};
+    background: #f5f4ee;
+    border: 1px solid #8b8b73;
+    border-radius: 3px;
+    padding: 5px 16px;
+}}
+QPushButton:hover {{
+    background: #ffffff;
+    border-color: {ACCENT_BLUE};
+}}
+QPushButton:pressed {{
+    background: #dcdac8;
+}}
+QPushButton:disabled {{
+    color: #8a8a8a;
+    background: #e4e2d6;
+    border-color: #c2c0ae;
+}}
+QPushButton:default {{
+    border: 1px solid {ACCENT_BLUE};
+}}
+"""
+
+PROGRESSBAR_STYLE = f"""
+QProgressBar {{
+    color: {TEXT_COLOR};
+    background: #ffffff;
+    border: 1px solid #8b8b73;
+    border-radius: 3px;
+    text-align: center;
+    height: 18px;
+}}
+QProgressBar::chunk {{
+    background-color: {ACCENT_BLUE};
+    border-radius: 2px;
+}}
+"""
 
 ACTIONS = [
     ("install", "Install Windows XP",
@@ -75,10 +125,10 @@ class Sidebar(QWidget):
         p.fillRect(self.rect(), g)
 
         p.setPen(QColor("white"))
-        p.setFont(QFont("Tahoma", 15, QFont.Weight.Bold))
+        p.setFont(QFont(UI_FONT_FAMILY, 15, QFont.Weight.Bold))
         p.drawText(16, 60, 130, 90, Qt.TextFlag.TextWordWrap, "Windows XP\nSetup Wizard")
 
-        p.setFont(QFont("Tahoma", 8))
+        p.setFont(QFont(UI_FONT_FAMILY, 8))
         p.setPen(QColor(255, 255, 255, 200))
         p.drawText(16, self.height() - 70, 130, 60, Qt.TextFlag.TextWordWrap,
                    "Earth1283/WinXP\ngithub.com")
@@ -163,33 +213,36 @@ class Wizard(QWidget):
     # -- page builders ---------------------------------------------------
     def _page(self, title):
         w = QWidget()
-        w.setStyleSheet(f"background: {BODY_BG};")
+        w.setStyleSheet(f"background: {BODY_BG}; color: {TEXT_COLOR};")
         l = QVBoxLayout(w)
-        l.setContentsMargins(24, 20, 24, 20)
+        l.setContentsMargins(28, 22, 28, 20)
         l.setSpacing(12)
         heading = QLabel(title)
-        heading.setStyleSheet("font-weight: bold; font-size: 13px;")
+        heading.setStyleSheet(f"font-weight: bold; font-size: 14px; color: {TEXT_COLOR}; border: none;")
         l.addWidget(heading)
+        rule = QWidget()
+        rule.setFixedHeight(1)
+        rule.setStyleSheet("background: #aca899;")
+        l.addWidget(rule)
         return w, l
 
     def _build_welcome(self):
         w, l = self._page("What would you like to do?")
-        status = "Existing installation found." if actions.is_installed() else "No installation found."
-        status_label = QLabel(status)
-        status_label.setStyleSheet("color: #555;")
+        status_label = QLabel(self._detect_status_text())
+        status_label.setStyleSheet(f"color: {SUBTEXT_COLOR}; border: none;")
         l.addWidget(status_label)
 
         self.action_group = QButtonGroup(w)
         for key, title, desc in ACTIONS:
             radio = QRadioButton(title)
-            radio.setStyleSheet("font-weight: bold;")
+            radio.setStyleSheet(f"font-weight: bold; color: {TEXT_COLOR}; border: none; padding: 2px 0;")
             radio.toggled.connect(lambda checked, k=key: self._on_action_picked(k, checked))
             if key == "install":
                 radio.setChecked(True)
             self.action_group.addButton(radio)
             l.addWidget(radio)
             sub = QLabel(desc)
-            sub.setStyleSheet("color: #555; margin-left: 20px;")
+            sub.setStyleSheet(f"color: {SUBTEXT_COLOR}; margin-left: 20px; border: none;")
             sub.setWordWrap(True)
             l.addWidget(sub)
         l.addStretch(1)
@@ -199,9 +252,11 @@ class Wizard(QWidget):
         w, l = self._page("Confirm")
         self.confirm_label = QLabel("")
         self.confirm_label.setWordWrap(True)
+        self.confirm_label.setStyleSheet(f"color: {TEXT_COLOR}; border: none;")
         l.addWidget(self.confirm_label)
         l.addStretch(1)
         self.confirm_checkbox = QCheckBox("I understand this will erase my data.")
+        self.confirm_checkbox.setStyleSheet(f"color: {TEXT_COLOR}; border: none;")
         self.confirm_checkbox.toggled.connect(self._update_nav)
         l.addWidget(self.confirm_checkbox)
         return w
@@ -209,10 +264,12 @@ class Wizard(QWidget):
     def _build_progress(self):
         w, l = self._page("Please wait")
         self.progress_status = QLabel("")
+        self.progress_status.setStyleSheet(f"color: {TEXT_COLOR}; border: none;")
         l.addWidget(self.progress_status)
         from PyQt6.QtWidgets import QProgressBar
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
+        self.progress_bar.setStyleSheet(PROGRESSBAR_STYLE)
         l.addWidget(self.progress_bar)
         l.addStretch(1)
         return w
@@ -221,9 +278,11 @@ class Wizard(QWidget):
         w, l = self._page("Setup Complete")
         self.finish_label = QLabel("")
         self.finish_label.setWordWrap(True)
+        self.finish_label.setStyleSheet(f"color: {TEXT_COLOR}; border: none;")
         l.addWidget(self.finish_label)
         l.addStretch(1)
         self.launch_checkbox = QCheckBox("Launch Windows XP now")
+        self.launch_checkbox.setStyleSheet(f"color: {TEXT_COLOR}; border: none;")
         self.launch_checkbox.setChecked(True)
         l.addWidget(self.launch_checkbox)
         return w
@@ -233,10 +292,15 @@ class Wizard(QWidget):
         bar.setStyleSheet(f"background: {BODY_BG}; border-top: 1px solid #aca899;")
         row = QHBoxLayout(bar)
         row.setContentsMargins(16, 10, 16, 10)
+        row.setSpacing(8)
         row.addStretch(1)
         self.back_btn = QPushButton("< Back")
         self.next_btn = QPushButton("Next >")
         self.cancel_btn = QPushButton("Cancel")
+        for btn in (self.back_btn, self.next_btn, self.cancel_btn):
+            btn.setStyleSheet(BUTTON_STYLE)
+            btn.setMinimumWidth(80)
+        self.next_btn.setDefault(True)
         self.back_btn.clicked.connect(self._go_back)
         self.next_btn.clicked.connect(self._go_next)
         self.cancel_btn.clicked.connect(self.close)
@@ -246,6 +310,19 @@ class Wizard(QWidget):
         return bar
 
     # -- behavior ---------------------------------------------------
+    def _detect_status_text(self):
+        has_app = actions.has_app_files()
+        has_data = actions.has_profile_data()
+        if has_app and has_data:
+            return "Existing installation found."
+        if has_data:
+            # main.py was run straight from a checkout, or the app dir was
+            # removed by hand -- vfs.json survived either way.
+            return "No app files found, but existing user data was found at ~/.winxp_sim."
+        if has_app:
+            return "App files found, but no user data yet (first run will create it)."
+        return "No installation found."
+
     def _on_action_picked(self, key, checked):
         if checked:
             self.selected_action = key
@@ -337,10 +414,37 @@ class Wizard(QWidget):
             subprocess.Popen([sys.executable, main_py])
 
 
+def _light_palette():
+    # Fusion style otherwise inherits the OS palette, which under dark mode
+    # swaps window/text colors and makes our (deliberately unstyled) default
+    # text render as light-on-light or invisible. Pin a fixed light palette
+    # so the wizard looks the same regardless of the OS theme.
+    pal = QPalette()
+    pal.setColor(QPalette.ColorRole.Window, QColor(BODY_BG))
+    pal.setColor(QPalette.ColorRole.WindowText, QColor(TEXT_COLOR))
+    pal.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
+    pal.setColor(QPalette.ColorRole.Text, QColor(TEXT_COLOR))
+    pal.setColor(QPalette.ColorRole.Button, QColor("#f5f4ee"))
+    pal.setColor(QPalette.ColorRole.ButtonText, QColor(TEXT_COLOR))
+    pal.setColor(QPalette.ColorRole.ToolTipBase, QColor("#ffffe1"))
+    pal.setColor(QPalette.ColorRole.ToolTipText, QColor(TEXT_COLOR))
+    pal.setColor(QPalette.ColorRole.Highlight, QColor(ACCENT_BLUE))
+    pal.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+    pal.setColor(QPalette.ColorRole.PlaceholderText, QColor(SUBTEXT_COLOR))
+    pal.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, QColor("#8a8a8a"))
+    pal.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor("#8a8a8a"))
+    return pal
+
+
 def main():
+    # Runs unmodified on Windows, Linux, and macOS -- PyQt6, and the stdlib
+    # calls in actions.py, are all cross-platform already. The only OS
+    # dependence is cosmetic (UI_FONT_FAMILY above, picked from
+    # platform.system()).
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    app.setFont(QFont("Tahoma", 9))
+    app.setPalette(_light_palette())
+    app.setFont(QFont(UI_FONT_FAMILY, 9))
     w = Wizard()
     w.show()
     sys.exit(app.exec())

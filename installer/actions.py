@@ -21,8 +21,20 @@ PROFILE_DIR = os.path.expanduser("~/.winxp_sim")  # matches winxp.vfs.STORE_DIR
 MARKER = "main.py"  # its presence at INSTALL_DIR's root means "app is installed"
 
 
-def is_installed() -> bool:
+def has_app_files() -> bool:
     return os.path.exists(os.path.join(INSTALL_DIR, MARKER))
+
+
+def has_profile_data() -> bool:
+    """True if ~/.winxp_sim holds real user data (vfs.json). Running main.py
+    straight from a git checkout -- common on macOS/Linux dev setups --
+    populates this without ever creating INSTALL_DIR, so it has to be
+    checked independently of has_app_files()."""
+    return os.path.exists(os.path.join(PROFILE_DIR, "vfs.json"))
+
+
+def is_installed() -> bool:
+    return has_app_files() or has_profile_data()
 
 
 def _download(url, dest_path, on_progress=None):
