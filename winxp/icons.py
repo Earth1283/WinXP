@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import os
 
-from PyQt6.QtCore import QRect, QRectF, Qt
+from PyQt6.QtCore import QRectF, Qt
 from PyQt6.QtGui import (
     QBrush, QColor, QIcon, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap,
-    QPolygon,
+    QPolygon, QPolygonF,
 )
-from PyQt6.QtCore import QPoint
+from PyQt6.QtCore import QPoint, QPointF
 
 _CACHE: dict[tuple, QIcon] = {}
 
@@ -224,18 +224,43 @@ def _draw_textfile(p, s, notepad=False, blue=False):
 
 
 def _draw_mword(p, s):
-    r = QRectF(s * 0.08, s * 0.08, s * 0.84, s * 0.84)
-    p.setPen(QPen(QColor("#1c3a12"), 1))
-    p.setBrush(_grad(r, "#3fa129", "#2d5c1f"))
-    p.drawRoundedRect(r, s * 0.10, s * 0.10)
+    """Word 2003's icon: a white sheet with the blue W and the blue spine."""
+    page = QRectF(s * 0.16, s * 0.06, s * 0.70, s * 0.88)
+    fold = s * 0.22
+    path = QPainterPath()
+    path.moveTo(page.left(), page.top())
+    path.lineTo(page.right() - fold, page.top())
+    path.lineTo(page.right(), page.top() + fold)
+    path.lineTo(page.right(), page.bottom())
+    path.lineTo(page.left(), page.bottom())
+    path.closeSubpath()
+    p.setPen(QPen(QColor("#7f8c9b"), max(1.0, s * 0.03)))
+    p.setBrush(QColor("#ffffff"))
+    p.drawPath(path)
+    p.setPen(QPen(QColor("#7f8c9b"), max(1.0, s * 0.025)))
+    p.drawPolyline(QPolygonF([
+        QPointF(page.right() - fold, page.top()),
+        QPointF(page.right() - fold, page.top() + fold),
+        QPointF(page.right(), page.top() + fold)]))
+
+    # ruled lines behind the letter
+    p.setPen(QPen(QColor("#b9c6d6"), max(1.0, s * 0.025)))
+    for i in range(3):
+        y = page.top() + s * (0.52 + i * 0.13)
+        p.drawLine(QPointF(page.left() + s * 0.09, y),
+                   QPointF(page.right() - s * 0.09, y))
+
+    # the blue spine and the W
     p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QColor("white"))
+    p.setBrush(_grad(QRectF(0, 0, 1, s), "#4a7fc1", "#22508f"))
+    p.drawRect(QRectF(s * 0.04, s * 0.16, s * 0.30, s * 0.68))
     f = p.font()
     f.setBold(True)
-    f.setPixelSize(int(s * 0.5))
+    f.setPixelSize(max(6, int(s * 0.42)))
     p.setFont(f)
     p.setPen(QColor("white"))
-    p.drawText(QRectF(r), Qt.AlignmentFlag.AlignCenter, "W")
+    p.drawText(QRectF(s * 0.04, s * 0.16, s * 0.30, s * 0.68),
+               Qt.AlignmentFlag.AlignCenter, "W")
 
 
 def _draw_photochop(p, s):

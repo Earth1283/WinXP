@@ -154,7 +154,7 @@ CATALOGUE = [
             Component("games", "Games", 3, apps=["minesweeper"],
                       note="Minesweeper."),
             Component("wmp", "Windows Media Player 8", 28, apps=["wmp"]),
-            Component("mword", "MacroHard Word", 62, apps=["mword"]),
+            Component("mword", "MacroHard Office Word 2003", 248, apps=["mword"]),
             Component("vscode", "Visual XP Code", 88, default=False, apps=["vscode"]),
         ]),
     Component(
