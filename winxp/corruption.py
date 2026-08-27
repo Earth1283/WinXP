@@ -2,6 +2,8 @@
 of crashing outright, so the OS limps along until it finally can't."""
 from __future__ import annotations
 
+import random
+
 from PyQt6.QtCore import QObject, pyqtSignal
 
 
@@ -58,11 +60,24 @@ def guard_system_file(wm, node) -> bool:
 
 def guard_fs(wm) -> bool:
     """explorer.exe IS the shell -- once it's dead, any filesystem operation
-    (opening a folder, new/rename/delete/move/properties) BSODs instead of
-    running. Callers do `if corruption.guard_fs(self.wm): return` at the top
-    of each fs-touching method; True means it already crashed the "OS"."""
+    (opening a folder, new/rename/delete/move/properties) is blocked. Callers
+    do `if corruption.guard_fs(self.wm): return` at the top of each
+    fs-touching method; True means the operation didn't happen.
+
+    Mostly this just freezes a window (same "Not Responding" limp as
+    services.exe dying) rather than a guaranteed crash -- only a small,
+    rising-with-damage chance actually BSODs, same ambient-odds shape as
+    desktop.py's _glitch_tick for the other critical procs."""
     if not health.is_dead("explorer.exe"):
         return False
-    from .apps.bsod import crash
-    crash(wm, "explorer.exe")
+    if random.random() < 0.1 + 0.05 * health.level:
+        from .apps.bsod import crash
+        crash(wm, "explorer.exe")
+        return True
+    candidates = [
+        w for w in wm.windows
+        if w.isVisible() and getattr(w, "_app_key", None) != "task_manager"
+    ]
+    if candidates:
+        random.choice(candidates).freeze(random.randint(1500, 3500))
     return True

@@ -20,8 +20,8 @@ PRIORITIES = ("Realtime", "High", "Above Normal", "Normal", "Below Normal", "Low
 
 END_PROCESS_WARNING = (
     "WARNING: Terminating a process can cause undesired results including\n"
-    "loss of data and system instability. The process will not be given\n"
-    "the chance to save its state or data before it is terminated.\n\n"
+    "loss of data. The process will not be given the chance to save its\n"
+    "state or data before it is terminated.\n\n"
     "Are you sure you want to terminate the process {name}?"
 )
 
@@ -310,18 +310,14 @@ class TaskManagerWindow(XPWindow):
             self._kill_explorer()
         elif info["window"] is not None:
             info["window"].close()
-        elif name == "System":
-            from .bsod import crash
-            crash(self.wm, "System")
-            return
         elif name in CRITICAL_PROCS:
+            # No instant BSOD here (not even for "System" or at the last critical
+            # proc) -- health.kill() just raises corruption.health.level, and
+            # desktop.py's _glitch_tick is what turns that into weird per-proc
+            # behavior plus a rising ambient chance of an eventual real crash.
             from ..corruption import health
             health.kill(name)
             self._killed_fake_pids.add(info["pid"])
-            if health.level >= len(CRITICAL_PROCS) - 1:
-                from .bsod import crash
-                crash(self.wm, "cascading system failure")
-                return
             XPMessageBox.information(
                 self, "Task Manager",
                 f"{name} has stopped responding and was terminated.\n\n"
