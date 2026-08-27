@@ -53,6 +53,8 @@ def _draw(name: str, size: int) -> QPixmap:
         _draw_textfile(p, s, notepad=(name == "notepad"))
     elif name == "wordpad":
         _draw_textfile(p, s, notepad=False, blue=True)
+    elif name == "mword":
+        _draw_mword(p, s)
     elif name == "ie":
         _draw_ie(p, s)
     elif name == "minesweeper":
@@ -212,6 +214,21 @@ def _draw_textfile(p, s, notepad=False, blue=False):
     for i in range(4):
         y = r.top() + s * 0.28 + i * s * 0.13
         p.drawLine(QPoint(int(r.left() + 5), int(y)), QPoint(int(r.right() - 5), int(y)))
+
+
+def _draw_mword(p, s):
+    r = QRectF(s * 0.08, s * 0.08, s * 0.84, s * 0.84)
+    p.setPen(QPen(QColor("#1c3a12"), 1))
+    p.setBrush(_grad(r, "#3fa129", "#2d5c1f"))
+    p.drawRoundedRect(r, s * 0.10, s * 0.10)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor("white"))
+    f = p.font()
+    f.setBold(True)
+    f.setPixelSize(int(s * 0.5))
+    p.setFont(f)
+    p.setPen(QColor("white"))
+    p.drawText(QRectF(r), Qt.AlignmentFlag.AlignCenter, "W")
 
 
 def _draw_ie(p, s):

@@ -42,6 +42,8 @@ APPS = [
             pinned=True, takes_node_id=True),
     AppSpec("wordpad", "WordPad", "wordpad", "wordpad", "WordPadWindow",
             pinned=True, takes_node_id=True),
+    AppSpec("mword", "MacroHard Word", "mword", "mword", "MWordWindow",
+            pinned=True, exe_name="mword.exe", takes_node_id=True),
     AppSpec("calculator", "Calculator", "calculator", "calculator", "CalculatorWindow",
             pinned=True, exe_name="calc.exe"),
     AppSpec("paint", "Paint", "paint", "paint", "PaintWindow",
