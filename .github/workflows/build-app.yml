@@ -1,0 +1,84 @@
+name: Build App Binary
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "main.py"
+      - "winxp/**"
+      - "utils/**"
+      - "requirements.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Cache Nuitka compile cache
+        uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/Nuitka/Nuitka/Cache
+          key: nuitka-app-windows-${{ hashFiles('main.py', 'winxp/**/*.py', 'utils/**/*.py') }}
+          restore-keys: |
+            nuitka-app-windows-
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install nuitka
+
+      - name: Build with Nuitka
+        run: >
+          python -m nuitka
+          --standalone
+          --enable-plugin=pyqt6
+          --windows-console-mode=disable
+          --include-data-dir=winxp/assets=winxp/assets
+          --output-filename=WinXP.exe
+          --output-dir=dist
+          --assume-yes-for-downloads
+          main.py
+
+      - name: Zip standalone build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          Compress-Archive -Path "dist/main.dist/*" -DestinationPath "out/WinXP-windows.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WinXP-windows.zip
+          path: out/WinXP-windows.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: WinXP-windows.zip
+          path: out
+
+      - name: Publish rolling app-latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete app-latest --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
+          gh release create app-latest "out/WinXP-windows.zip" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "WinXP app binary (latest main)" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --notes "Nuitka-compiled standalone build of main.py at ${GITHUB_SHA}. Not meant for direct download -- installer-v* releases fetch this automatically for a fast native launch, falling back to running main.py with the interpreter when it isn't present. Rebuilt on every push to main that touches app source."

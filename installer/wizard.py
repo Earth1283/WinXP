@@ -576,6 +576,13 @@ class Wizard(QWidget):
 
     def _launch_app(self):
         import subprocess
+        bin_exe = os.path.join(actions.INSTALL_DIR, actions.BIN_SUBDIR, "WinXP.exe")
+        if sys.platform == "win32" and os.path.exists(bin_exe):
+            # The prebuilt native binary -- no interpreter needed, and it
+            # doesn't inherit sys.executable being *this* frozen installer
+            # rather than a real python.exe when run from the shipped .exe.
+            subprocess.Popen([bin_exe], cwd=os.path.dirname(bin_exe))
+            return
         main_py = os.path.join(actions.INSTALL_DIR, "main.py")
         if os.path.exists(main_py):
             subprocess.Popen([sys.executable, main_py])

@@ -194,6 +194,16 @@ def complete_selection() -> set[str]:
     return set(BY_ID)
 
 
+def has_unstubbed_selection(selected) -> bool:
+    """True if every stub-capable component is selected -- i.e. nothing on
+    disk would get replaced with a placeholder. The prebuilt binary is
+    compiled once, server-side, with everything included, so it only
+    matches what apply_selection() puts on disk when this holds; otherwise
+    launching it would show features the selection asked to hide."""
+    selected = set(selected)
+    return all(cid in selected for cid, comp in BY_ID.items() if comp.stub)
+
+
 def selected_size_mb(selected) -> int:
     return sum(c.size_mb for cid, c in BY_ID.items() if cid in selected)
 

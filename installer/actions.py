@@ -2,8 +2,14 @@
 static dependency on the winxp package, because it doesn't exist on disk
 yet when this runs. Fetches the actual sim straight from GitHub
 (Earth1283/WinXP, main branch) as a zip via stdlib urllib -- no git, no pip
-install, matching the eventual Nuitka-compiled native binary having zero
-runtime dependencies beyond PyQt6 itself.
+install.
+
+On Windows, also best-effort fetches a Nuitka-compiled WinXP.exe (built by
+.github/workflows/build-app.yml on every push to main) into INSTALL_DIR/bin
+so launch doesn't need a Python interpreter at all. The source tree above
+is still the thing Repair introspects and the thing a custom component
+selection stubs, so it's always fetched regardless of whether the binary
+lands too.
 """
 from __future__ import annotations
 
@@ -18,9 +24,14 @@ import zipfile
 import components
 
 REPO_ZIP_URL = "https://github.com/Earth1283/WinXP/archive/refs/heads/main.zip"
+# Rolling release, rebuilt by .github/workflows/build-app.yml on every push to
+# main that touches app source -- same "always matches main" guarantee as the
+# REPO_ZIP_URL source pull above, just precompiled for a faster launch.
+APP_ZIP_URL = "https://github.com/Earth1283/WinXP/releases/download/app-latest/WinXP-windows.zip"
 INSTALL_DIR = os.path.expanduser("~/WindowsXP")
 PROFILE_DIR = os.path.expanduser("~/.winxp_sim")  # matches winxp.vfs.STORE_DIR
 MARKER = "main.py"  # its presence at INSTALL_DIR's root means "app is installed"
+BIN_SUBDIR = "bin"  # INSTALL_DIR/bin/WinXP.exe -- the prebuilt native launcher
 
 
 def has_app_files() -> bool:
@@ -84,6 +95,42 @@ def _download_and_extract(dest: str, on_progress=None, on_file=None):
                        dest, on_file)
 
 
+def _download_prebuilt_binary(dest: str) -> bool:
+    """Best-effort: grabs the Nuitka-compiled WinXP.exe from the app-latest
+    release and unpacks it flat into dest/bin. Windows-only -- it's a PE
+    binary -- and never fatal: any failure (offline, asset not built yet,
+    non-Windows) just leaves bin/ absent, and _launch_app falls back to
+    running main.py with the interpreter."""
+    if sys.platform != "win32":
+        return False
+    bin_dir = os.path.join(dest, BIN_SUBDIR)
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            zip_path = os.path.join(tmp, "winxp-bin.zip")
+            _download(APP_ZIP_URL, zip_path)
+            shutil.rmtree(bin_dir, ignore_errors=True)
+            os.makedirs(bin_dir, exist_ok=True)
+            with zipfile.ZipFile(zip_path) as zf:
+                zf.extractall(bin_dir)
+        return os.path.exists(os.path.join(bin_dir, "WinXP.exe"))
+    except Exception:
+        shutil.rmtree(bin_dir, ignore_errors=True)
+        return False
+
+
+def _sync_prebuilt_binary(selection):
+    """Keeps INSTALL_DIR/bin in step with the component selection. Only a
+    complete (unstubbed) selection matches what the prebuilt binary was
+    compiled with -- see components.has_unstubbed_selection -- so a custom
+    install that hides a photochop sub-feature drops the fast path and
+    falls back to source, rather than launching a binary that still has
+    the "not installed" feature baked in."""
+    if components.has_unstubbed_selection(selection):
+        _download_prebuilt_binary(INSTALL_DIR)
+    else:
+        shutil.rmtree(os.path.join(INSTALL_DIR, BIN_SUBDIR), ignore_errors=True)
+
+
 def _copy_tree(src, dst, root, on_file=None):
     if os.path.isdir(src):
         os.makedirs(dst, exist_ok=True)
@@ -123,7 +170,9 @@ def install(selection=None, on_progress=None, on_file=None):
     adding = stored is None or not selection.issubset(stored)
     if not has_app_files() or adding:
         _download_and_extract(INSTALL_DIR, on_progress, on_file)
-    return _configure(selection, on_file)
+    log = _configure(selection, on_file)
+    _sync_prebuilt_binary(selection)
+    return log
 
 
 def reinstall(selection=None, on_progress=None, on_file=None):
@@ -132,7 +181,9 @@ def reinstall(selection=None, on_progress=None, on_file=None):
     shutil.rmtree(INSTALL_DIR, ignore_errors=True)
     shutil.rmtree(PROFILE_DIR, ignore_errors=True)
     _download_and_extract(INSTALL_DIR, on_progress, on_file)
-    return _configure(selection, on_file)
+    log = _configure(selection, on_file)
+    _sync_prebuilt_binary(selection)
+    return log
 
 
 def wipe():
@@ -165,7 +216,9 @@ def repair(selection=None, on_progress=None, on_file=None) -> list[str]:
         fixed.append("Application files (re-fetched from source)")
     # re-fetching restores every module, including ones that had been stubbed
     # out as uninstalled components, so the selection has to be re-applied.
-    fixed.extend(_configure(_resolve_selection(selection), on_file))
+    resolved = _resolve_selection(selection)
+    fixed.extend(_configure(resolved, on_file))
+    _sync_prebuilt_binary(resolved)
     fixed.extend(_repair_vfs())
     return fixed
 
