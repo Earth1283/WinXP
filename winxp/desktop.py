@@ -17,7 +17,7 @@ from .window_manager import WindowManager
 
 ICON_CELL = QSize(80, 90)
 FILE_ICONS = {
-    vfs_mod.TEXT: "text_file", vfs_mod.RICH: "wordpad",
+    vfs_mod.TEXT: "text_file", vfs_mod.RICH: "mword",
     vfs_mod.IMAGE: "bitmap_file", vfs_mod.AUDIO: "audio_file",
     vfs_mod.VIDEO: "video_file", vfs_mod.FOLDER: "folder",
 }
@@ -352,7 +352,7 @@ class Desktop(QWidget):
         elif node.kind == vfs_mod.TEXT:
             self._launch(f"notepad:{node_id}")
         elif node.kind == vfs_mod.RICH:
-            self._launch(f"wordpad:{node_id}")
+            self._launch(f"mword:{node_id}")
         elif node.kind == vfs_mod.IMAGE:
             self._launch(f"paint:{node_id}")
         elif node.kind in (vfs_mod.AUDIO, vfs_mod.VIDEO):

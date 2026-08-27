@@ -17,7 +17,7 @@ from ..window_manager import XPWindow
 from ..xp_dialog import XPMessageBox
 
 FILE_ICONS = {
-    vfs_mod.TEXT: "text_file", vfs_mod.RICH: "wordpad",
+    vfs_mod.TEXT: "text_file", vfs_mod.RICH: "mword",
     vfs_mod.IMAGE: "bitmap_file", vfs_mod.AUDIO: "audio_file",
     vfs_mod.VIDEO: "video_file",
 }
@@ -258,7 +258,7 @@ class ExplorerWindow(XPWindow):
         elif node.kind == vfs_mod.TEXT:
             launch(self.wm, f"notepad:{node_id}")
         elif node.kind == vfs_mod.RICH:
-            launch(self.wm, f"wordpad:{node_id}")
+            launch(self.wm, f"mword:{node_id}")
         elif node.kind == vfs_mod.IMAGE:
             launch(self.wm, f"paint:{node_id}")
         elif node.kind in (vfs_mod.AUDIO, vfs_mod.VIDEO):

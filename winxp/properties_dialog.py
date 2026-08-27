@@ -25,7 +25,7 @@ TYPE_LABELS = {
 }
 
 ICON_KEYS = {
-    vfs_mod.FOLDER: "folder", vfs_mod.TEXT: "text_file", vfs_mod.RICH: "wordpad",
+    vfs_mod.FOLDER: "folder", vfs_mod.TEXT: "text_file", vfs_mod.RICH: "mword",
     vfs_mod.IMAGE: "bitmap_file", vfs_mod.AUDIO: "audio_file", vfs_mod.VIDEO: "video_file",
 }
 

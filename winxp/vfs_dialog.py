@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
 from . import icons, theme, vfs as vfs_mod
 from .xp_dialog import DIALOG_BUTTON_QSS, build_dialog_frame
 
-KIND_ICONS = {vfs_mod.TEXT: "text_file", vfs_mod.RICH: "wordpad", vfs_mod.IMAGE: "bitmap_file"}
+KIND_ICONS = {vfs_mod.TEXT: "text_file", vfs_mod.RICH: "mword", vfs_mod.IMAGE: "bitmap_file"}
 
 
 class VfsFileDialog(QDialog):

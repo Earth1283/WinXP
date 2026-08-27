@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QSize, Qt, QTimer
+from PyQt6.QtCore import QBuffer, QIODevice, QSize, Qt, QTimer
 from PyQt6.QtGui import (
-    QAction, QActionGroup, QFont, QKeySequence, QTextCharFormat, QTextCursor, QTextDocument,
-    QTextListFormat,
+    QAction, QActionGroup, QColor, QFont, QKeySequence, QTextCharFormat, QTextCursor,
+    QTextDocument, QTextListFormat,
 )
 from PyQt6.QtWidgets import (
     QComboBox, QDialog, QFontComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit,
@@ -18,6 +18,17 @@ from ..xp_dialog import DIALOG_BUTTON_QSS, XPMessageBox, build_dialog_frame
 
 BRAND_GREEN = "#2d5c1f"
 AUTOSAVE_MS = 20_000
+
+
+def _image_to_html(image) -> str:
+    """Embed a QImage as a base64 data URI so it survives toHtml()/setHtml()
+    round trips -- QTextCursor.insertImage() alone only registers an in-memory
+    resource-cache key that doesn't exist anymore once the HTML is reloaded."""
+    buffer = QBuffer()
+    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+    image.save(buffer, "PNG")
+    b64 = bytes(buffer.data().toBase64()).decode("ascii")
+    return f'<img src="data:image/png;base64,{b64}" width="{image.width()}" height="{image.height()}">'
 
 
 class MWordWindow(XPWindow):
@@ -145,6 +156,8 @@ class MWordWindow(XPWindow):
         format_menu.addSeparator()
         format_menu.addAction(self._act("&Highlight Color...", self._pick_highlight))
         format_menu.addAction(self._act("&Clear Formatting", self._clear_formatting, "Ctrl+Space"))
+        format_menu.addSeparator()
+        format_menu.addAction(self._act("&Word Wrap...", self._word_wrap))
 
         tools_menu = bar.addMenu("&Tools")
         self.autocorrect_act = self._act(
@@ -324,7 +337,7 @@ class MWordWindow(XPWindow):
         dialog = WordArt3DDialog(self)
         if dialog.exec() == QDialog.DialogCode.Accepted and dialog.result_image is not None:
             cursor = self.editor.textCursor()
-            cursor.insertImage(dialog.result_image)
+            cursor.insertHtml(_image_to_html(dialog.result_image))
             self.editor.setTextCursor(cursor)
 
     # -- view -----------------------------------------------------------------
@@ -421,6 +434,36 @@ class MWordWindow(XPWindow):
         if cursor.hasSelection():
             cursor.setCharFormat(empty)
         self.editor.setCurrentCharFormat(empty)
+
+    def _word_wrap(self):
+        cursor = self.editor.textCursor()
+        if cursor.hasSelection():
+            text = cursor.selectedText().replace("\u2029", " ")
+            fmt_cursor = QTextCursor(self.editor.document())
+            fmt_cursor.setPosition(cursor.selectionStart())
+            fmt_cursor.setPosition(cursor.selectionStart() + 1, QTextCursor.MoveMode.KeepAnchor)
+            fmt = fmt_cursor.charFormat()
+        else:
+            block = cursor.block()
+            text = block.text()
+            fmt_cursor = QTextCursor(block)
+            fmt = fmt_cursor.charFormat()
+
+        text = text.strip()
+        if not text:
+            XPMessageBox.warning(self, "MacroHard Word", "There's no paragraph here to wrap.")
+            return
+
+        font = fmt.font()
+        brush = fmt.foreground()
+        color = brush.color() if brush.style() != Qt.BrushStyle.NoBrush else QColor("black")
+
+        from .word_wrap import render_word_wrap
+        image = render_word_wrap(text, font, color)
+        insert_cursor = self.editor.textCursor()
+        insert_cursor.insertHtml(_image_to_html(image))
+        self.editor.setTextCursor(insert_cursor)
+        XPMessageBox.information(self, "Word Wrap", "This paragraph has been word wrapped.")
 
     # -- tools -----------------------------------------------------------------
 
