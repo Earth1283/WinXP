@@ -43,6 +43,7 @@ jobs:
           python -m nuitka
           --standalone
           --enable-plugin=pyqt6
+          --include-qt-plugins=multimedia
           --windows-console-mode=disable
           --include-data-dir=winxp/assets=winxp/assets
           --output-filename=WinXP.exe
