@@ -15,6 +15,8 @@ import tempfile
 import urllib.request
 import zipfile
 
+import components
+
 REPO_ZIP_URL = "https://github.com/Earth1283/WinXP/archive/refs/heads/main.zip"
 INSTALL_DIR = os.path.expanduser("~/WindowsXP")
 PROFILE_DIR = os.path.expanduser("~/.winxp_sim")  # matches winxp.vfs.STORE_DIR
@@ -60,10 +62,13 @@ def _download(url, dest_path, on_progress=None):
         on_progress(100)
 
 
-def _download_and_extract(dest: str, on_progress=None):
+def _download_and_extract(dest: str, on_progress=None, on_file=None):
     """Downloads the repo zip and unpacks it straight into dest (dest ends
     up holding main.py, winxp/, utils/, etc. directly -- not nested inside
-    the extra WinXP-main/ folder GitHub's zip wraps everything in)."""
+    the extra WinXP-main/ folder GitHub's zip wraps everything in).
+
+    Files are copied one at a time rather than moved wholesale so Setup can
+    name each one as it lands, the way the file-copy phase always did."""
     with tempfile.TemporaryDirectory() as tmp:
         zip_path = os.path.join(tmp, "winxp.zip")
         _download(REPO_ZIP_URL, zip_path, on_progress)
@@ -75,30 +80,59 @@ def _download_and_extract(dest: str, on_progress=None):
         )
         os.makedirs(dest, exist_ok=True)
         for name in os.listdir(extracted):
-            src = os.path.join(extracted, name)
-            dst = os.path.join(dest, name)
-            if os.path.exists(dst):
-                if os.path.isdir(dst) and not os.path.islink(dst):
-                    shutil.rmtree(dst)
-                else:
-                    os.remove(dst)
-            shutil.move(src, dst)
+            _copy_tree(os.path.join(extracted, name), os.path.join(dest, name),
+                       dest, on_file)
 
 
-def install(on_progress=None):
-    """Fetches the app if it's missing. A no-op if already installed --
-    ~/.winxp_sim is left untouched either way; the app initializes its own
-    profile the first time main.py actually runs."""
-    if is_installed():
+def _copy_tree(src, dst, root, on_file=None):
+    if os.path.isdir(src):
+        os.makedirs(dst, exist_ok=True)
+        for name in sorted(os.listdir(src)):
+            _copy_tree(os.path.join(src, name), os.path.join(dst, name), root, on_file)
         return
-    _download_and_extract(INSTALL_DIR, on_progress)
+    if os.path.exists(dst) or os.path.islink(dst):
+        if os.path.isdir(dst) and not os.path.islink(dst):
+            shutil.rmtree(dst)
+        else:
+            os.remove(dst)
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    shutil.copy2(src, dst)
+    if on_file:
+        on_file(os.path.relpath(dst, root))
 
 
-def reinstall(on_progress=None):
+def count_files(dest: str) -> int:
+    return sum(len(files) for _, _, files in os.walk(dest))
+
+
+def _resolve_selection(selection):
+    if selection is None:
+        selection = components.read_manifest(INSTALL_DIR) or components.default_selection()
+    return components.prune_orphans(selection)
+
+
+def install(selection=None, on_progress=None, on_file=None):
+    """Fetches the app when it's missing -- or when the selection asks for a
+    component that isn't on disk -- then makes the tree match the selection.
+
+    Adding a component back needs its source files, which a stub replaced, so
+    that case re-fetches too. ~/.winxp_sim is left alone either way; the app
+    initializes its own profile the first time main.py actually runs."""
+    selection = _resolve_selection(selection)
+    stored = components.read_manifest(INSTALL_DIR)
+    adding = stored is None or not selection.issubset(stored)
+    if not has_app_files() or adding:
+        _download_and_extract(INSTALL_DIR, on_progress, on_file)
+    return _configure(selection, on_file)
+
+
+def reinstall(selection=None, on_progress=None, on_file=None):
     """Wipe app + data, fetch fresh. Destructive."""
+    selection = _resolve_selection(selection)
     shutil.rmtree(INSTALL_DIR, ignore_errors=True)
     shutil.rmtree(PROFILE_DIR, ignore_errors=True)
-    _download_and_extract(INSTALL_DIR, on_progress)
+    _download_and_extract(INSTALL_DIR, on_progress, on_file)
+    return _configure(selection, on_file)
 
 
 def wipe():
@@ -108,7 +142,13 @@ def wipe():
     shutil.rmtree(PROFILE_DIR, ignore_errors=True)
 
 
-def repair(on_progress=None) -> list[str]:
+def _configure(selection, on_file=None):
+    """Apply a component selection to the freshly-laid-down tree."""
+    return components.apply_selection(INSTALL_DIR, _resolve_selection(selection),
+                                      on_step=on_file)
+
+
+def repair(selection=None, on_progress=None, on_file=None) -> list[str]:
     """Re-fetches app code over the existing install (fixes missing or
     hand-edited files) without touching ~/.winxp_sim, then -- once the app
     is back on disk -- dynamically imports the freshly repaired winxp
@@ -118,11 +158,14 @@ def repair(on_progress=None) -> list[str]:
     reachable before the app has ever been run."""
     fixed = []
     was_installed = is_installed()
-    _download_and_extract(INSTALL_DIR, on_progress)
+    _download_and_extract(INSTALL_DIR, on_progress, on_file)
     if not was_installed:
         fixed.append("Windows XP (app files were missing entirely)")
     else:
         fixed.append("Application files (re-fetched from source)")
+    # re-fetching restores every module, including ones that had been stubbed
+    # out as uninstalled components, so the selection has to be re-applied.
+    fixed.extend(_configure(_resolve_selection(selection), on_file))
     fixed.extend(_repair_vfs())
     return fixed
 
