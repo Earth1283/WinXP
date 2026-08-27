@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import re
+
 from PyQt6.QtCore import QSize, QUrl
+from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PyQt6.QtWidgets import (
     QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextBrowser, QToolBar, QVBoxLayout,
 )
@@ -9,6 +12,7 @@ from .. import theme
 from ..window_manager import XPWindow
 
 HOME_URL = "http://www.msn.com/"
+USER_AGENT = b"Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1)"
 
 PAGES = {
     "http://www.msn.com/": (
@@ -218,6 +222,8 @@ class IEWindow(XPWindow):
         super().__init__(wm, title="Windows Internet Explorer", icon_key="ie", size=QSize(760, 560))
         self.history = []
         self.hist_index = -1
+        self.net = QNetworkAccessManager(self)
+        self._pending_reply = None
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
@@ -281,7 +287,19 @@ class IEWindow(XPWindow):
             return
         if not url.startswith(("http://", "https://", "about:")):
             url = "http://" + url
-        title, html = PAGES.get(url, (url, ERROR_PAGE.format(url=url)))
+
+        if url in PAGES:
+            title, html = PAGES[url]
+            self._render(url, title, html, record)
+            return
+
+        if url.startswith("about:"):
+            self._render(url, url, "<body></body>", record)
+            return
+
+        self._fetch(url, record)
+
+    def _render(self, url, title, html, record):
         self.browser.setHtml(html)
         self.address.setText(url)
         self.setWindowTitle(f"{title} - Windows Internet Explorer")
@@ -289,6 +307,37 @@ class IEWindow(XPWindow):
             self.history = self.history[: self.hist_index + 1]
             self.history.append(url)
             self.hist_index = len(self.history) - 1
+
+    def _fetch(self, url, record):
+        self.address.setText(url)
+        self.setWindowTitle(f"Connecting to {url}... - Windows Internet Explorer")
+        self.browser.setHtml(
+            f"<body style=\"font-family:Tahoma;padding:24px;\">"
+            f"<p>Opening page http://{QUrl(url).host()} ...</p></body>"
+        )
+        request = QNetworkRequest(QUrl(url))
+        request.setRawHeader(b"User-Agent", USER_AGENT)
+        if hasattr(request, "setTransferTimeout"):
+            request.setTransferTimeout(15000)
+        reply = self.net.get(request)
+        self._pending_reply = reply
+        reply.finished.connect(lambda: self._on_fetch_done(reply, url, record))
+
+    def _on_fetch_done(self, reply, url, record):
+        reply.deleteLater()
+        if self._pending_reply is reply:
+            self._pending_reply = None
+        if reply.error() != QNetworkReply.NetworkError.NoError:
+            self._render(url, url, ERROR_PAGE.format(url=url), record)
+            return
+
+        raw = bytes(reply.readAll())
+        html = raw.decode("utf-8", errors="replace")
+        html = re.sub(r"<script\b.*?</script>", "", html, flags=re.I | re.S)
+        html = re.sub(r"<!--.*?-->", "", html, flags=re.S)
+        match = re.search(r"<title[^>]*>(.*?)</title>", html, re.I | re.S)
+        title = match.group(1).strip() if match else url
+        self._render(url, title, html, record)
 
     def _on_link(self, qurl: QUrl):
         self.navigate(qurl.toString())
