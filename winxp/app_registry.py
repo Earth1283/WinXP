@@ -48,7 +48,7 @@ APPS = [
             pinned=True, exe_name="calc.exe"),
     AppSpec("paint", "Paint", "paint", "paint", "PaintWindow",
             pinned=True, exe_name="mspaint.exe", takes_node_id=True),
-    AppSpec("photochop", "PhotoChop", "photochop", "photochop", "PhotoChopWindow",
+    AppSpec("photochop", "Adobo PhotoChop 7.0", "photochop", "photochop", "PhotoChopWindow",
             pinned=True, exe_name="photochop.exe", takes_node_id=True),
     AppSpec("minesweeper", "Minesweeper", "minesweeper", "minesweeper", "MinesweeperWindow",
             pinned=True, exe_name="winmine.exe"),
