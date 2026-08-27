@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 from PyQt6.QtCore import QSize, QUrl
+from PyQt6.QtGui import QImage, QTextDocument
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PyQt6.QtWidgets import (
     QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextBrowser, QToolBar, QVBoxLayout,
@@ -217,6 +218,19 @@ or the connection may have timed out.</p>
 """
 
 
+class _ImageTextBrowser(QTextBrowser):
+    """QTextBrowser that fetches <img> resources via the owning IEWindow."""
+
+    def __init__(self, ie_window):
+        super().__init__()
+        self._ie = ie_window
+
+    def loadResource(self, res_type, name):
+        if res_type == QTextDocument.ResourceType.ImageResource:
+            return self._ie._load_image(name)
+        return super().loadResource(res_type, name)
+
+
 class IEWindow(XPWindow):
     def __init__(self, wm):
         super().__init__(wm, title="Windows Internet Explorer", icon_key="ie", size=QSize(760, 560))
@@ -224,13 +238,16 @@ class IEWindow(XPWindow):
         self.hist_index = -1
         self.net = QNetworkAccessManager(self)
         self._pending_reply = None
+        self.image_cache = {}
+        self._pending_images = set()
+        self._current_html = ""
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setMenuBar(self._build_menu())
         layout.addWidget(self._build_toolbar())
 
-        self.browser = QTextBrowser()
+        self.browser = _ImageTextBrowser(self)
         self.browser.setOpenLinks(False)
         self.browser.anchorClicked.connect(self._on_link)
         self.browser.setStyleSheet("background: white; border: none;")
@@ -238,6 +255,40 @@ class IEWindow(XPWindow):
         self.set_content_layout(layout)
 
         self.navigate(HOME_URL)
+
+    def _load_image(self, name: QUrl):
+        url = name.toString()
+        if not url.startswith(("http://", "https://")):
+            url = QUrl(self.address.text()).resolved(name).toString()
+
+        cached = self.image_cache.get(url)
+        if cached is not None:
+            return cached
+
+        if url not in self._pending_images:
+            self._fetch_image(url)
+        return QImage()
+
+    def _fetch_image(self, url):
+        request = QNetworkRequest(QUrl(url))
+        request.setRawHeader(b"User-Agent", USER_AGENT)
+        if hasattr(request, "setTransferTimeout"):
+            request.setTransferTimeout(15000)
+        reply = self.net.get(request)
+        self._pending_images.add(url)
+        reply.finished.connect(lambda: self._on_image_done(reply, url))
+
+    def _on_image_done(self, reply, url):
+        reply.deleteLater()
+        self._pending_images.discard(url)
+        if reply.error() != QNetworkReply.NetworkError.NoError:
+            return
+
+        image = QImage()
+        if image.loadFromData(bytes(reply.readAll())):
+            self.image_cache[url] = image
+            if self._current_html:
+                self.browser.setHtml(self._current_html)
 
     def _build_menu(self):
         from PyQt6.QtWidgets import QMenuBar
@@ -300,6 +351,7 @@ class IEWindow(XPWindow):
         self._fetch(url, record)
 
     def _render(self, url, title, html, record):
+        self._current_html = html
         self.browser.setHtml(html)
         self.address.setText(url)
         self.setWindowTitle(f"{title} - Windows Internet Explorer")
