@@ -118,14 +118,16 @@ def _download_prebuilt_binary(dest: str) -> bool:
         return False
 
 
-def _sync_prebuilt_binary(selection):
+def _sync_prebuilt_binary(selection, source_only=False):
     """Keeps INSTALL_DIR/bin in step with the component selection. Only a
     complete (unstubbed) selection matches what the prebuilt binary was
     compiled with -- see components.has_unstubbed_selection -- so a custom
     install that hides a photochop sub-feature drops the fast path and
     falls back to source, rather than launching a binary that still has
-    the "not installed" feature baked in."""
-    if components.has_unstubbed_selection(selection):
+    the "not installed" feature baked in. source_only forces the fallback
+    even for a complete selection, for users who'd rather always run the
+    fetched source through the Python interpreter."""
+    if not source_only and components.has_unstubbed_selection(selection):
         _download_prebuilt_binary(INSTALL_DIR)
     else:
         shutil.rmtree(os.path.join(INSTALL_DIR, BIN_SUBDIR), ignore_errors=True)
@@ -158,7 +160,7 @@ def _resolve_selection(selection):
     return components.prune_orphans(selection)
 
 
-def install(selection=None, on_progress=None, on_file=None):
+def install(selection=None, on_progress=None, on_file=None, source_only=True):
     """Fetches the app when it's missing -- or when the selection asks for a
     component that isn't on disk -- then makes the tree match the selection.
 
@@ -171,18 +173,18 @@ def install(selection=None, on_progress=None, on_file=None):
     if not has_app_files() or adding:
         _download_and_extract(INSTALL_DIR, on_progress, on_file)
     log = _configure(selection, on_file)
-    _sync_prebuilt_binary(selection)
+    _sync_prebuilt_binary(selection, source_only)
     return log
 
 
-def reinstall(selection=None, on_progress=None, on_file=None):
+def reinstall(selection=None, on_progress=None, on_file=None, source_only=True):
     """Wipe app + data, fetch fresh. Destructive."""
     selection = _resolve_selection(selection)
     shutil.rmtree(INSTALL_DIR, ignore_errors=True)
     shutil.rmtree(PROFILE_DIR, ignore_errors=True)
     _download_and_extract(INSTALL_DIR, on_progress, on_file)
     log = _configure(selection, on_file)
-    _sync_prebuilt_binary(selection)
+    _sync_prebuilt_binary(selection, source_only)
     return log
 
 
@@ -199,7 +201,7 @@ def _configure(selection, on_file=None):
                                       on_step=on_file)
 
 
-def repair(selection=None, on_progress=None, on_file=None) -> list[str]:
+def repair(selection=None, on_progress=None, on_file=None, source_only=True) -> list[str]:
     """Re-fetches app code over the existing install (fixes missing or
     hand-edited files) without touching ~/.winxp_sim, then -- once the app
     is back on disk -- dynamically imports the freshly repaired winxp
@@ -218,7 +220,7 @@ def repair(selection=None, on_progress=None, on_file=None) -> list[str]:
     # out as uninstalled components, so the selection has to be re-applied.
     resolved = _resolve_selection(selection)
     fixed.extend(_configure(resolved, on_file))
-    _sync_prebuilt_binary(resolved)
+    _sync_prebuilt_binary(resolved, source_only)
     fixed.extend(_repair_vfs())
     return fixed
 

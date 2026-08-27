@@ -150,10 +150,11 @@ class ActionWorker(QThread):
     finished_ok = pyqtSignal(object)
     failed = pyqtSignal(str)
 
-    def __init__(self, action, selection=None):
+    def __init__(self, action, selection=None, source_only=True):
         super().__init__()
         self.action = action
         self.selection = selection
+        self.source_only = source_only
 
     def _fake_ramp(self, lo, hi, phase_text=None):
         if phase_text:
@@ -180,12 +181,13 @@ class ActionWorker(QThread):
                 self.phase.emit("Downloading Windows XP...")
                 fn = actions.install if self.action == "install" else actions.reinstall
                 self.stage.emit(3)
-                result = fn(self.selection, on_progress=download, on_file=copied)
+                result = fn(self.selection, on_progress=download, on_file=copied,
+                           source_only=self.source_only)
             elif self.action == "repair":
                 self.phase.emit("Downloading Windows XP...")
                 self.stage.emit(3)
                 result = actions.repair(self.selection, on_progress=download,
-                                        on_file=copied)
+                                        on_file=copied, source_only=self.source_only)
             elif self.action == "wipe":
                 self.stage.emit(3)
                 self._fake_ramp(14, 78, "Removing files...")
@@ -295,6 +297,22 @@ class Wizard(QWidget):
             sub.setStyleSheet(
                 f"color: {SUBTEXT_COLOR}; margin-left: 20px; border: none;")
             l.addWidget(sub)
+
+        l.addSpacing(8)
+        self.binary_checkbox = QCheckBox("Install as a compiled application")
+        self.binary_checkbox.setStyleSheet(f"color: {TEXT_COLOR}; border: none;")
+        self.binary_checkbox.setChecked(False)
+        l.addWidget(self.binary_checkbox)
+        binary_sub = pages.body_label(
+            "Recommended for most computers. Starts faster and does not "
+            "require Python or PyQt6 to be installed. If this box is not "
+            "checked, Setup will retrieve the source files from Microsoft's "
+            "distribution servers and run Windows XP using the Python "
+            "interpreter.", muted=True)
+        binary_sub.setStyleSheet(
+            f"color: {SUBTEXT_COLOR}; margin-left: 20px; border: none;")
+        l.addWidget(binary_sub)
+
         l.addStretch(1)
         return w
 
@@ -488,10 +506,13 @@ class Wizard(QWidget):
             names = [comps.BY_ID[c].label for c in chosen
                      if not comps.BY_ID[c].children and not comps.BY_ID[c].required]
             size = comps.selected_size_mb(chosen)
+            launcher = ("Compiled application" if self.binary_checkbox.isChecked()
+                       else "Python source")
             self.summary_label.setText(
                 f"Setup type: {self.type_page.value().title()}\n"
                 f"Components: {len(chosen)} selected, {size:,} MB required\n"
-                f"Product Key: {self.key_page.key()}")
+                f"Product Key: {self.key_page.key()}\n"
+                f"Launcher: {launcher}")
             self.summary_label.setVisible(True)
         else:
             self.summary_label.setVisible(False)
@@ -511,7 +532,8 @@ class Wizard(QWidget):
 
         selection = (self._selection
                      if self.selected_action in ("install", "reinstall") else None)
-        self.worker = ActionWorker(self.selected_action, selection)
+        source_only = not self.binary_checkbox.isChecked()
+        self.worker = ActionWorker(self.selected_action, selection, source_only)
         self.worker.progress.connect(self.progress_bar.setValue)
         self.worker.phase.connect(self.progress_status.setText)
         self.worker.stage.connect(self.sidebar.set_stage)
