@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtGui import (
-    QAction, QActionGroup, QFont, QKeySequence, QTextCursor, QTextDocument, QTextListFormat,
+    QAction, QActionGroup, QFont, QKeySequence, QTextCharFormat, QTextCursor, QTextDocument,
+    QTextListFormat,
 )
 from PyQt6.QtWidgets import (
     QComboBox, QDialog, QFontComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit,
@@ -10,8 +11,10 @@ from PyQt6.QtWidgets import (
 )
 
 from .. import theme, vfs as vfs_mod
+from ..color_dialog import XPColorDialog
 from ..vfs_dialog import VfsFileDialog
 from ..window_manager import XPWindow
+from ..xp_dialog import DIALOG_BUTTON_QSS, XPMessageBox, build_dialog_frame
 
 BRAND_GREEN = "#2d5c1f"
 AUTOSAVE_MS = 20_000
@@ -24,6 +27,10 @@ class MWordWindow(XPWindow):
         super().__init__(wm, title="Document1 - MacroHard Word", icon_key="mword", size=QSize(700, 520))
         self.node_id = node_id
         self._find_dialog = None
+        self._support_dialog = None
+        self._zoom_steps = 0
+        self._autocorrect_enabled = True
+        self._autocorrecting = False
 
         self.editor = QTextEdit()
         self.editor.setStyleSheet("background: white; border: none;")
@@ -31,15 +38,18 @@ class MWordWindow(XPWindow):
         self.editor.cursorPositionChanged.connect(self._sync_format_actions)
         self.editor.cursorPositionChanged.connect(self._update_status)
         self.editor.textChanged.connect(self._update_status)
+        self.editor.textChanged.connect(self._autocorrect_check)
         self.editor.document().modificationChanged.connect(self._on_modified)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setMenuBar(self._build_menu())
         layout.addWidget(self._build_banner())
-        layout.addWidget(self._build_toolbar())
+        self.toolbar = self._build_toolbar()
+        layout.addWidget(self.toolbar)
         layout.addWidget(self.editor, 1)
-        layout.addWidget(self._build_status_bar())
+        self.status_bar_widget = self._build_status_bar()
+        layout.addWidget(self.status_bar_widget)
         self.set_content_layout(layout)
 
         if node_id:
@@ -100,15 +110,59 @@ class MWordWindow(XPWindow):
         edit_menu.addAction(self._act("&Find...", self.show_find, QKeySequence.StandardKey.Find))
         edit_menu.addAction(self._act("&Replace...", self.show_replace, QKeySequence.StandardKey.Replace))
 
-        bar.addMenu("&View")
-        bar.addMenu("&Insert")
-        bar.addMenu("F&ormat")
+        view_menu = bar.addMenu("&View")
+        view_menu.addAction(self._act("Zoom &In", self._zoom_in, QKeySequence.StandardKey.ZoomIn))
+        view_menu.addAction(self._act("Zoom &Out", self._zoom_out, QKeySequence.StandardKey.ZoomOut))
+        view_menu.addAction(self._act("&Reset Zoom", self._zoom_reset, "Ctrl+0"))
+        view_menu.addSeparator()
+        view_menu.addAction(self._act("Formatting &Toolbar", self._toggle_toolbar, checkable=True, checked=True))
+        view_menu.addAction(self._act("&Status Bar", self._toggle_statusbar, checkable=True, checked=True))
+
+        insert_menu = bar.addMenu("&Insert")
+        insert_menu.addAction(self._act("&Date", self._insert_date))
+        insert_menu.addAction(self._act("Date and &Time", self._insert_datetime))
+        insert_menu.addSeparator()
+        insert_menu.addAction(self._act("&Horizontal Line", self._insert_hr))
+        insert_menu.addAction(self._act("Page &Break", self._insert_page_break))
+        symbol_menu = insert_menu.addMenu("&Symbol")
+        for sym in ["©", "®", "™", "→", "•", "★", "§", "¶"]:
+            symbol_menu.addAction(self._act(sym, lambda checked=False, s=sym: self._insert_symbol(s)))
+        insert_menu.addSeparator()
+        insert_menu.addAction(self._act("&WordArt (3D)...", self._insert_wordart))
+
+        format_menu = bar.addMenu("F&ormat")
+        self.strike_act = self._act(
+            "&Strikethrough", lambda c: self.editor.setFontStrikeOut(c), checkable=True
+        )
+        self.super_act = self._act("Su&perscript", self._toggle_super, checkable=True)
+        self.sub_act = self._act("Su&bscript", self._toggle_sub, checkable=True)
+        format_menu.addAction(self.strike_act)
+        format_menu.addAction(self.super_act)
+        format_menu.addAction(self.sub_act)
+        format_menu.addSeparator()
+        format_menu.addAction(self._act("&Increase Indent", self._increase_indent))
+        format_menu.addAction(self._act("&Decrease Indent", self._decrease_indent))
+        format_menu.addSeparator()
+        format_menu.addAction(self._act("&Highlight Color...", self._pick_highlight))
+        format_menu.addAction(self._act("&Clear Formatting", self._clear_formatting, "Ctrl+Space"))
 
         tools_menu = bar.addMenu("&Tools")
+        self.autocorrect_act = self._act(
+            "Auto&Correct as You Type", self._toggle_autocorrect, checkable=True, checked=True
+        )
+        tools_menu.addAction(self.autocorrect_act)
+        tools_menu.addSeparator()
         tools_menu.addAction(self._act("&Word Count...", self._show_word_count))
         tools_menu.addAction(self._act("&Clippy Enterprise Assistant...", self._clippy))
+        tools_menu.addAction(self._act("&Macro Recorder...", self._macro_recorder))
 
-        bar.addMenu("&Help")
+        help_menu = bar.addMenu("&Help")
+        help_menu.addAction(self._act("MacroHard Word &Help", self._help_topics, "F1"))
+        help_menu.addAction(self._act("Check for &Updates...", self._check_updates))
+        help_menu.addSeparator()
+        help_menu.addAction(self._act("&Get Help From Support...", self._get_support))
+        help_menu.addSeparator()
+        help_menu.addAction(self._act("&About MacroHard Word...", self._about))
         return bar
 
     def _build_toolbar(self):
@@ -190,8 +244,11 @@ class MWordWindow(XPWindow):
 
     # -- helpers -------------------------------------------------------------
 
-    def _act(self, text, slot, shortcut=None):
+    def _act(self, text, slot, shortcut=None, checkable=False, checked=False):
         act = QAction(text, self)
+        if checkable:
+            act.setCheckable(True)
+            act.setChecked(checked)
         act.triggered.connect(slot)
         if shortcut:
             act.setShortcut(QKeySequence(shortcut))
@@ -215,9 +272,8 @@ class MWordWindow(XPWindow):
             pass
 
     def _pick_color(self):
-        from PyQt6.QtWidgets import QColorDialog
-        color = QColorDialog.getColor(self.editor.textColor(), self, "Text Color")
-        if color.isValid():
+        color = XPColorDialog.get_color(self, self.editor.textColor())
+        if color is not None:
             self.editor.setTextColor(color)
 
     def _toggle_list(self, style):
@@ -252,21 +308,195 @@ class MWordWindow(XPWindow):
         self.status_pos.setText(f"Ln {cursor.blockNumber() + 1}, Col {cursor.positionInBlock() + 1}")
 
     def _show_word_count(self):
-        from PyQt6.QtWidgets import QMessageBox
         text = self.editor.toPlainText()
         words = len(text.split())
         chars = len(text)
         chars_no_space = len(text.replace(" ", "").replace("\n", ""))
         lines = text.count("\n") + 1
-        QMessageBox.information(
+        XPMessageBox.information(
             self, "Word Count",
             f"Words: {words}\nCharacters (with spaces): {chars}\n"
             f"Characters (no spaces): {chars_no_space}\nLines: {lines}",
         )
 
+    def _insert_wordart(self):
+        from .wordart_3d import WordArt3DDialog
+        dialog = WordArt3DDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.result_image is not None:
+            cursor = self.editor.textCursor()
+            cursor.insertImage(dialog.result_image)
+            self.editor.setTextCursor(cursor)
+
+    # -- view -----------------------------------------------------------------
+
+    def _zoom_in(self):
+        self.editor.zoomIn(1)
+        self._zoom_steps += 1
+
+    def _zoom_out(self):
+        self.editor.zoomOut(1)
+        self._zoom_steps -= 1
+
+    def _zoom_reset(self):
+        if self._zoom_steps > 0:
+            self.editor.zoomOut(self._zoom_steps)
+        elif self._zoom_steps < 0:
+            self.editor.zoomIn(-self._zoom_steps)
+        self._zoom_steps = 0
+
+    def _toggle_toolbar(self, checked):
+        self.toolbar.setVisible(checked)
+
+    def _toggle_statusbar(self, checked):
+        self.status_bar_widget.setVisible(checked)
+
+    # -- insert -----------------------------------------------------------------
+
+    def _insert_date(self):
+        from datetime import date
+        self.editor.insertPlainText(date.today().strftime("%B %d, %Y"))
+
+    def _insert_datetime(self):
+        from datetime import datetime
+        self.editor.insertPlainText(datetime.now().strftime("%B %d, %Y %I:%M %p"))
+
+    def _insert_hr(self):
+        self.editor.insertHtml("<hr>")
+
+    def _insert_page_break(self):
+        self.editor.insertHtml(
+            '<div style="border-top:2px dashed #999; margin:14px 0; padding-top:4px; '
+            'color:#999; font-size:10px;">-- Page Break --</div>'
+        )
+
+    def _insert_symbol(self, symbol):
+        self.editor.insertPlainText(symbol)
+
+    # -- format -----------------------------------------------------------------
+
+    def _toggle_super(self, checked):
+        if checked:
+            self.sub_act.blockSignals(True)
+            self.sub_act.setChecked(False)
+            self.sub_act.blockSignals(False)
+        self._apply_vertical_align()
+
+    def _toggle_sub(self, checked):
+        if checked:
+            self.super_act.blockSignals(True)
+            self.super_act.setChecked(False)
+            self.super_act.blockSignals(False)
+        self._apply_vertical_align()
+
+    def _apply_vertical_align(self):
+        fmt = QTextCharFormat()
+        if self.super_act.isChecked():
+            fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignSuperScript)
+        elif self.sub_act.isChecked():
+            fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignSubScript)
+        else:
+            fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignNormal)
+        self.editor.mergeCurrentCharFormat(fmt)
+
+    def _increase_indent(self):
+        cursor = self.editor.textCursor()
+        fmt = cursor.blockFormat()
+        fmt.setIndent(fmt.indent() + 1)
+        cursor.setBlockFormat(fmt)
+
+    def _decrease_indent(self):
+        cursor = self.editor.textCursor()
+        fmt = cursor.blockFormat()
+        fmt.setIndent(max(0, fmt.indent() - 1))
+        cursor.setBlockFormat(fmt)
+
+    def _pick_highlight(self):
+        color = XPColorDialog.get_color(self, self.editor.textBackgroundColor())
+        if color is not None:
+            self.editor.setTextBackgroundColor(color)
+
+    def _clear_formatting(self):
+        empty = QTextCharFormat()
+        cursor = self.editor.textCursor()
+        if cursor.hasSelection():
+            cursor.setCharFormat(empty)
+        self.editor.setCurrentCharFormat(empty)
+
+    # -- tools -----------------------------------------------------------------
+
+    AUTOCORRECT_MAP = {
+        "teh": "the", "adn": "and", "recieve": "receive", "seperate": "separate",
+        "definately": "definitely", "occured": "occurred", "wierd": "weird",
+        "thier": "their", "alot": "a lot", "wich": "which",
+    }
+
+    def _toggle_autocorrect(self, checked):
+        self._autocorrect_enabled = checked
+
+    def _autocorrect_check(self):
+        if not self._autocorrect_enabled or self._autocorrecting:
+            return
+        cursor = self.editor.textCursor()
+        pos = cursor.position()
+        if pos == 0:
+            return
+        text_before = self.editor.document().toPlainText()[:pos]
+        if not text_before or text_before[-1] not in " \n\t.,!?;:":
+            return
+        trimmed = text_before[:-1]
+        words = trimmed.split()
+        if not words:
+            return
+        word = words[-1]
+        replacement = self.AUTOCORRECT_MAP.get(word.lower())
+        if replacement is None:
+            return
+        if word[0].isupper():
+            replacement = replacement.capitalize()
+        start = pos - 1 - len(word)
+        self._autocorrecting = True
+        fix_cursor = self.editor.textCursor()
+        fix_cursor.setPosition(start)
+        fix_cursor.setPosition(start + len(word), QTextCursor.MoveMode.KeepAnchor)
+        fix_cursor.insertText(replacement)
+        self._autocorrecting = False
+
+    def _macro_recorder(self):
+        XPMessageBox.information(
+            self, "Macro Recorder",
+            "MacroHard Legal has not yet approved end users running their own code "
+            "on this software.\n\nRecording cancelled.",
+        )
+
+    # -- help -----------------------------------------------------------------
+
+    def _help_topics(self):
+        XPMessageBox.information(
+            self, "MacroHard Word Help", "Have you tried Clippy?\n\n(That's it. That's the help.)"
+        )
+
+    def _check_updates(self):
+        XPMessageBox.information(
+            self, "MacroHard Update", "No updates found.\n\nYou are already embarrassingly overboard."
+        )
+
+    def _about(self):
+        XPMessageBox.information(
+            self, "About MacroHard Word",
+            "MacroHard Word\nVersion 1.0 (Embarrassingly Overboard Edition)\n\n"
+            "Not affiliated with any other software company, real or imagined.",
+        )
+
+    def _get_support(self):
+        from .bofh_support import SupportChatDialog
+        if self._support_dialog is not None:
+            self._support_dialog.close()
+        self._support_dialog = SupportChatDialog(self)
+        self._support_dialog.show()
+        self._support_dialog.raise_()
+
     def _clippy(self):
-        from PyQt6.QtWidgets import QMessageBox
-        QMessageBox.information(
+        XPMessageBox.information(
             self, "Clippy Enterprise Assistant",
             "It looks like you're writing a document.\n\nWould you like help embarrassing yourself?",
         )
@@ -385,12 +615,18 @@ class MWordWindow(XPWindow):
 
 class _FindReplaceDialog(QDialog):
     def __init__(self, owner: MWordWindow, replace: bool):
-        super().__init__(owner)
+        super().__init__(owner, Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.owner = owner
-        self.setWindowTitle("Replace" if replace else "Find")
         self.setModal(False)
 
-        layout = QVBoxLayout(self)
+        inner = build_dialog_frame(self, "Replace" if replace else "Find")
+
+        body = QWidget()
+        body.setStyleSheet(f"QWidget {{ background: {theme.XP_WINDOW_BG}; }} {DIALOG_BUTTON_QSS}")
+        inner.addWidget(body)
+
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(12, 10, 12, 10)
 
         find_row = QHBoxLayout()
         find_row.addWidget(QLabel("Find what:"))
@@ -430,13 +666,11 @@ class _FindReplaceDialog(QDialog):
 
     def _find_next(self):
         if not self.owner.find_text(self.find_edit.text()):
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.information(self, "MacroHard Word", "Finished searching the document.")
+            XPMessageBox.information(self, "MacroHard Word", "Finished searching the document.")
 
     def _replace(self):
         self.owner.replace_current(self.find_edit.text(), self.replace_edit.text())
 
     def _replace_all(self):
         count = self.owner.replace_all(self.find_edit.text(), self.replace_edit.text())
-        from PyQt6.QtWidgets import QMessageBox
-        QMessageBox.information(self, "MacroHard Word", f"Replaced {count} occurrence(s).")
+        XPMessageBox.information(self, "MacroHard Word", f"Replaced {count} occurrence(s).")
