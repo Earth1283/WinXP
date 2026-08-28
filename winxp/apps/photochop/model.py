@@ -236,14 +236,20 @@ class Selection:
         self.mask: QImage | None = None
         self.path: QPainterPath | None = None
         self.feather_radius = 0.0
+        self._mask_only_bounds = QRect()
 
     def is_empty(self) -> bool:
-        return self.mask is None
+        if self.mask is None:
+            return True
+        if self.path is not None and not self.path.isEmpty():
+            return False
+        return self._mask_only_bounds.isEmpty()
 
     def clear(self):
         self.mask = None
         self.path = None
         self.feather_radius = 0.0
+        self._mask_only_bounds = QRect()
 
     def _blank(self) -> QImage:
         img = QImage(self.w, self.h, QImage.Format.Format_ARGB32_Premultiplied)
@@ -265,8 +271,10 @@ class Selection:
     def set_path(self, path: QPainterPath, mode="replace", antialias=True):
         new_mask = self._mask_from_path(self.w, self.h, path, antialias)
         self.combine_mask(new_mask, mode)
-        if mode == "replace" or self.path is None:
+        if mode == "replace" or (mode == "add" and self.path is None):
             self.path = QPainterPath(path)
+        elif self.path is None:
+            self.path = QPainterPath()
         elif mode == "add":
             self.path = self.path.united(path)
         elif mode == "subtract":
@@ -274,16 +282,22 @@ class Selection:
         elif mode == "intersect":
             self.path = self.path.intersected(path)
         self.feather_radius = 0.0
+        self._sync_mask_only_bounds()
 
     def combine_mask(self, new_mask: QImage, mode="replace"):
-        if self.mask is None or mode == "replace":
+        if mode == "replace" or (self.mask is None and mode == "add"):
             self.mask = new_mask
+            return
+        if self.mask is None:
+            self.mask = self._blank()
+            return
+        if mode == "subtract":
+            self.mask = ops.combine(self.mask, new_mask,
+                                    lambda current, remove: max(0, current - remove))
             return
         p = QPainter(self.mask)
         if mode == "add":
             p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Lighten)
-        elif mode == "subtract":
-            p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Difference)
         else:
             p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Darken)
         p.drawImage(0, 0, new_mask)
@@ -291,18 +305,56 @@ class Selection:
 
     def set_mask(self, mask: QImage, mode="replace"):
         self.combine_mask(mask, mode)
-        self.path = self._path_from_mask(self.mask)
+        self.refresh_path_from_mask()
+
+    def refresh_path_from_mask(self):
+        self.path = self._path_from_mask(self.mask) if self.mask is not None else None
+        self._sync_mask_only_bounds()
+
+    def _sync_mask_only_bounds(self):
+        self._mask_only_bounds = QRect()
+        if (self.mask is not None
+                and (self.path is None or self.path.isEmpty())):
+            self._mask_only_bounds = self._content_bounds(self.mask)
+
+    @staticmethod
+    def _content_bounds(mask: QImage) -> QRect:
+        """Bounds of every non-zero mask pixel, including sub-50% selections."""
+        buf, w, h = ops.to_buf(mask)
+        values = ops.plane(buf, ops.R)
+        left, top, right, bottom = w, h, -1, -1
+        for index, value in enumerate(values):
+            if not value:
+                continue
+            x, y = index % w, index // w
+            left, top = min(left, x), min(top, y)
+            right, bottom = max(right, x), max(bottom, y)
+        if right < left:
+            return QRect()
+        return QRect(left, top, right - left + 1, bottom - top + 1)
 
     @staticmethod
     def _path_from_mask(mask: QImage) -> QPainterPath:
         """Trace the mask into a region so the ants have an outline to walk."""
-        bitmap = mask.convertToFormat(QImage.Format.Format_Mono,
-                                      Qt.ImageConversionFlag.MonoOnly)
         from PyQt6.QtGui import QBitmap
-        region = QRegion(QBitmap.fromImage(bitmap))
+
+        # QBitmap treats black (bit 1 in Qt's mono conversion) as part of its
+        # region.  Selection masks use the opposite convention: white is
+        # selected.  Invert a copy before converting so the region follows the
+        # selected pixels instead of their complement.
+        bitmap_source = mask.copy()
+        bitmap_source.invertPixels(QImage.InvertMode.InvertRgb)
+        bitmap = QBitmap.fromImage(
+            bitmap_source,
+            Qt.ImageConversionFlag.MonoOnly | Qt.ImageConversionFlag.ThresholdDither,
+        )
+        region = QRegion(bitmap)
         path = QPainterPath()
         path.addRegion(region)
-        return path
+        # addRegion() contributes one subpath per internal region rectangle.
+        # Stroking that raw path draws the rectangle seams as horizontal zebra
+        # stripes; simplifying merges them into the actual selection contour.
+        return path.simplified()
 
     def select_all(self):
         path = QPainterPath()
@@ -317,30 +369,32 @@ class Selection:
         full = QPainterPath()
         full.addRect(0, 0, self.w, self.h)
         self.path = full.subtracted(self.path) if self.path else full
+        self._sync_mask_only_bounds()
 
     def feather(self, radius: float):
         if self.mask is None or radius <= 0:
             return
         self.mask = ops.gaussian_blur(self.mask, radius)
         self.feather_radius = radius
+        self._sync_mask_only_bounds()
 
     def expand(self, pixels: int):
         if self.mask is None:
             return
         self.mask = ops.maximum(self.mask, max(1, pixels))
-        self.path = self._path_from_mask(self.mask)
+        self.refresh_path_from_mask()
 
     def contract(self, pixels: int):
         if self.mask is None:
             return
         self.mask = ops.minimum(self.mask, max(1, pixels))
-        self.path = self._path_from_mask(self.mask)
+        self.refresh_path_from_mask()
 
     def smooth(self, radius: int):
         if self.mask is None:
             return
         self.mask = ops.threshold(ops.gaussian_blur(self.mask, radius), 128)
-        self.path = self._path_from_mask(self.mask)
+        self.refresh_path_from_mask()
 
     def border(self, width: int):
         if self.mask is None:
@@ -348,15 +402,15 @@ class Selection:
         outer = ops.maximum(self.mask, max(1, width // 2 or 1))
         inner = ops.minimum(self.mask, max(1, width // 2 or 1))
         self.mask = ops.combine(outer, inner, lambda a, b: max(0, a - b))
-        self.path = self._path_from_mask(self.mask)
+        self.refresh_path_from_mask()
 
     def bounds(self) -> QRect:
         if self.mask is None:
             return QRect(0, 0, self.w, self.h)
-        if self.path is not None and not self.path.isEmpty():
-            return self.path.boundingRect().toAlignedRect().intersected(
-                QRect(0, 0, self.w, self.h))
-        return QRect(0, 0, self.w, self.h)
+        if self.path is None or self.path.isEmpty():
+            return QRect(self._mask_only_bounds)
+        return self.path.boundingRect().toAlignedRect().intersected(
+            QRect(0, 0, self.w, self.h))
 
     def contains(self, pos: QPoint) -> bool:
         if self.mask is None:
@@ -381,6 +435,7 @@ class Selection:
         s.mask = self.mask.copy() if self.mask else None
         s.path = QPainterPath(self.path) if self.path else None
         s.feather_radius = self.feather_radius
+        s._mask_only_bounds = QRect(self._mask_only_bounds)
         return s
 
 

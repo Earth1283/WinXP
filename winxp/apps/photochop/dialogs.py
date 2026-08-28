@@ -150,16 +150,21 @@ class SliderRow(QWidget):
         if self._syncing:
             return
         self._syncing = True
-        self.spin.setValue(v / self._scale)
-        self._syncing = False
+        try:
+            value = v / self._scale if self.decimals else v
+            self.spin.setValue(value)
+        finally:
+            self._syncing = False
         self.changed.emit()
 
     def _from_spin(self, v):
         if self._syncing:
             return
         self._syncing = True
-        self.slider.setValue(int(v * self._scale))
-        self._syncing = False
+        try:
+            self.slider.setValue(int(v * self._scale))
+        finally:
+            self._syncing = False
         self.changed.emit()
 
     def value(self):

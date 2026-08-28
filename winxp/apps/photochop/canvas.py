@@ -363,9 +363,12 @@ class Canvas(QWidget):
         p.scale(self.zoom, self.zoom)
         white = QPen(QColor("white"), 1 / max(0.05, self.zoom))
         black = QPen(QColor("black"), 1 / max(0.05, self.zoom))
-        black.setStyle(Qt.PenStyle.CustomDashLine)
-        black.setDashPattern([4, 4])
-        black.setDashOffset(self._ants_offset)
+        for pen, offset in ((white, self._ants_offset + 4),
+                            (black, self._ants_offset)):
+            pen.setStyle(Qt.PenStyle.CustomDashLine)
+            pen.setDashPattern([4, 4])
+            pen.setDashOffset(offset)
+            pen.setCapStyle(Qt.PenCapStyle.FlatCap)
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.setPen(white)
         p.drawPath(path)
@@ -586,8 +589,8 @@ class Canvas(QWidget):
         pos = self.doc_pos(ev.position())
         self._drag_now = pos
         self._shift = bool(ev.modifiers() & Qt.KeyboardModifier.ShiftModifier)
-        inside = QRectF(0, 0, self.doc.width, self.doc.height).contains(pos)
-        self.position_changed.emit(pos.toPoint() if inside else None)
+        self.position_changed.emit(
+            _bounded_image_point(pos, self.doc.width, self.doc.height))
 
         if self._pan_anchor is not None:
             start, base = self._pan_anchor
@@ -981,7 +984,7 @@ class Canvas(QWidget):
         painter.setOpacity(self._stroke.opacity)
         painter.drawImage(0, 0, self._stroke.buffer)
         painter.end()
-        sel.path = sel._path_from_mask(sel.mask)
+        sel.refresh_path_from_mask()
         self._stroke = None
         self._record("Quick Mask")
         self.document_changed.emit()
@@ -1904,6 +1907,13 @@ class Canvas(QWidget):
 
 
 # ------------------------------------------------------------- helpers -----
+
+def _bounded_image_point(pos: QPointF, width: int, height: int) -> QPoint | None:
+    """Convert document coordinates without rounding an edge pixel outside."""
+    if 0 <= pos.x() < width and 0 <= pos.y() < height:
+        return QPoint(int(pos.x()), int(pos.y()))
+    return None
+
 
 def QSizeF_safe(w, h):
     from PyQt6.QtCore import QSizeF
