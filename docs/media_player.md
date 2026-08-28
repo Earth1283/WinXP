@@ -1,12 +1,15 @@
-# Windows Media Player: real audio + video playback
+# Windows Media Player 8
 
-`winxp/apps/wmp.py` plays real media through `PyQt6.QtMultimedia`
-(`QMediaPlayer` + `QAudioOutput`, backed by ffmpeg) — not a fake/decorative
-transport bar. Unlike Notepad/WordPad/Paint, it has no way to bring in new
-content at all: no file dialog, no host filesystem access, nothing. It
-plays whatever's procedurally seeded into the library at bootstrap (see
-"Sample content" below) — fully self-contained inside `~/.winxp_sim`, same
-as everything else in the sim.
+`winxp/apps/wmp.py` recreates the Windows XP release of Windows Media Player
+8 in full mode. It keeps real media playback through `QMediaPlayer` and
+`QAudioOutput`; the shell is not a decorative transport bar.
+
+The player includes the original task-oriented sections: Now Playing, Media
+Guide, Copy from CD, Media Library, Radio Tuner, Copy to CD or Device, and
+Skin Chooser. The shared transport supports play/pause, stop, previous, next,
+seek, volume, mute, shuffle, and repeat. Full mode and compact skin mode are
+available from View, alongside a ten-band equalizer and three animated
+visualization collections.
 
 ## vfs kinds
 
@@ -31,18 +34,17 @@ the extra scope.
   backend needs. There's no way to hand `QMediaPlayer` a base64 blob.
 - Transport (play/pause/stop/prev/next), the seek slider, and volume are all
   generic — they don't care whether the loaded track is audio or video.
-- `_on_media_status()` watches for `QMediaPlayer.MediaStatus.EndOfMedia` and
-  calls `_play_next()` automatically — verified with a synthetic short WAV
-  during development (it audibly/measurably auto-advanced mid-test).
+- `on_media_status()` watches for `QMediaPlayer.MediaStatus.EndOfMedia` and
+  advances the Now Playing queue automatically.
 
 ## Audio vs. video display
 
 A `QStackedLayout` holds two widgets in the same spot: `Visualizer` (a
 decorative animated bar graph — it does not analyze the real audio signal,
 Qt Multimedia doesn't expose spectrum data without considerably more
-plumbing than this warrants) and a `QVideoWidget`. `_play_track()` checks
+plumbing than this warrants) and a `QVideoWidget`. `play_track()` checks
 `node.kind == vfs_mod.VIDEO` and calls `stack.setCurrentWidget(...)`
-accordingly; `player.setVideoOutput(video_widget)` is wired once up front
+accordingly. `player.setVideoOutput(video_widget)` is wired once up front
 and is harmless when the loaded source has no video stream.
 
 ## Sample content (`winxp/sample_media.py`)
@@ -63,10 +65,7 @@ version of the sim that had Media Player but no seeded content).
 
 ## Earlier design note
 
-An earlier version of this feature had "Import from Computer..." reach the
-real host filesystem to pull in real audio/video files — first via a native
-`QFileDialog`, later via a from-scratch Luna-chrome picker that still
-browsed real directories. Both were removed: the sim doesn't touch the host
-filesystem at all now, and Media Player works entirely off procedurally
-generated content instead. See `docs/dialogs.md` for the broader
-no-native-chrome policy this follows.
+An earlier version imported media from the host filesystem. That was removed:
+the player now stays entirely inside the simulated filesystem and uses the
+procedurally generated sample tracks. See `docs/dialogs.md` for the broader
+no-native-chrome policy.

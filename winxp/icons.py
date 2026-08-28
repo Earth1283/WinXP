@@ -134,6 +134,8 @@ def _draw(name: str, size: int) -> QPixmap:
         _draw_tool_text(p, s)
     elif name == "tool_select":
         _draw_tool_select(p, s)
+    elif name in _SHELL_DRAWERS:
+        _SHELL_DRAWERS[name](p, s)
     else:
         p.setBrush(QColor("#cccccc"))
         p.drawRect(2, 2, s - 4, s - 4)
@@ -847,3 +849,354 @@ def _draw_tool_select(p, s):
     p.setPen(pen)
     p.setBrush(Qt.BrushStyle.NoBrush)
     p.drawRect(QRectF(s * 0.14, s * 0.14, s * 0.72, s * 0.72))
+
+
+#  Explorer shell glyphs 
+# Toolbar / task-pane / drive icons. Registered through _SHELL_DRAWERS at the
+# bottom rather than another 20 elif branches in _draw().
+
+def _page(p, s, r=None, fill="white"):
+    """The dog-eared white sheet every document-ish glyph is built on."""
+    r = r or QRectF(s * 0.20, s * 0.08, s * 0.56, s * 0.82)
+    fold = r.width() * 0.28
+    p.setPen(QPen(QColor("#6b6b6b"), 1))
+    p.setBrush(QColor(fill))
+    p.drawPolygon(QPolygon([
+        QPoint(int(r.left()), int(r.top())),
+        QPoint(int(r.right() - fold), int(r.top())),
+        QPoint(int(r.right()), int(r.top() + fold)),
+        QPoint(int(r.right()), int(r.bottom())),
+        QPoint(int(r.left()), int(r.bottom())),
+    ]))
+    p.setBrush(QColor("#d4d4d4"))
+    p.drawPolygon(QPolygon([
+        QPoint(int(r.right() - fold), int(r.top())),
+        QPoint(int(r.right()), int(r.top() + fold)),
+        QPoint(int(r.right() - fold), int(r.top() + fold)),
+    ]))
+    return r
+
+
+def _mini_folder(p, s, rect):
+    p.setPen(QPen(QColor("#8a6d1f"), 1))
+    p.setBrush(_grad(rect, "#ffe28a", "#ffb92e"))
+    p.drawRoundedRect(QRectF(rect.left(), rect.top() - rect.height() * 0.22,
+                             rect.width() * 0.48, rect.height() * 0.3), 1, 1)
+    p.setBrush(_grad(rect, "#ffd35c", "#ffa713"))
+    p.drawRoundedRect(rect, 1, 1)
+
+
+def _fat_arrow(p, s, rect, direction, c1, c2, outline):
+    """Chunky Luna navigation arrow: shaft + head, gradient filled."""
+    w, h = rect.width(), rect.height()
+    cx, cy = rect.center().x(), rect.center().y()
+    pts = [
+        QPointF(-w * 0.5, 0.0), QPointF(-w * 0.05, -h * 0.5), QPointF(-w * 0.05, -h * 0.2),
+        QPointF(w * 0.5, -h * 0.2), QPointF(w * 0.5, h * 0.2), QPointF(-w * 0.05, h * 0.2),
+        QPointF(-w * 0.05, h * 0.5),
+    ]
+    rot = {"left": (1, 1, False), "right": (-1, 1, False), "up": (1, 1, True), "down": (-1, 1, True)}
+    sx, sy, swap = rot[direction]
+    poly = QPolygonF([
+        QPointF(cx + (pt.y() if swap else pt.x()) * sx,
+                cy + (pt.x() if swap else pt.y()) * sy)
+        for pt in pts
+    ])
+    p.setPen(QPen(QColor(outline), 1))
+    p.setBrush(_grad(rect, c1, c2))
+    p.drawPolygon(poly)
+
+
+def _draw_nav_back(p, s):
+    _fat_arrow(p, s, QRectF(s * 0.10, s * 0.20, s * 0.80, s * 0.60), "left",
+               "#a6ea7d", "#2f8f16", "#1d5a0c")
+
+
+def _draw_nav_forward(p, s):
+    _fat_arrow(p, s, QRectF(s * 0.10, s * 0.20, s * 0.80, s * 0.60), "right",
+               "#a6ea7d", "#2f8f16", "#1d5a0c")
+
+
+def _draw_nav_up(p, s):
+    _mini_folder(p, s, QRectF(s * 0.06, s * 0.56, s * 0.88, s * 0.36))
+    _fat_arrow(p, s, QRectF(s * 0.22, s * 0.02, s * 0.56, s * 0.50), "up",
+               "#a6ea7d", "#2f8f16", "#1d5a0c")
+
+
+def _draw_shell_search(p, s):
+    lens = QRectF(s * 0.12, s * 0.10, s * 0.58, s * 0.58)
+    p.setPen(QPen(QColor("#3a4a63"), max(2, int(s * 0.09))))
+    p.setBrush(_grad(lens, "#dff0ff", "#8fc4f0"))
+    p.drawEllipse(lens)
+    p.setPen(QPen(QColor("#3a4a63"), max(2, int(s * 0.13)), Qt.PenStyle.SolidLine,
+                  Qt.PenCapStyle.RoundCap))
+    p.drawLine(QPointF(lens.right() - s * 0.06, lens.bottom() - s * 0.06),
+               QPointF(s * 0.90, s * 0.90))
+
+
+def _draw_shell_folders(p, s):
+    _mini_folder(p, s, QRectF(s * 0.04, s * 0.30, s * 0.42, s * 0.34))
+    p.setPen(QPen(QColor("#7f7f7f"), 1))
+    x = s * 0.50
+    p.drawLine(QPointF(x, s * 0.24), QPointF(x, s * 0.80))
+    for y in (0.24, 0.52, 0.80):
+        p.drawLine(QPointF(x, s * y), QPointF(s * 0.62, s * y))
+        _mini_folder(p, s, QRectF(s * 0.64, s * (y - 0.10), s * 0.30, s * 0.20))
+
+
+def _draw_shell_views(p, s):
+    p.setPen(QPen(QColor("#4a6a95"), 1))
+    for row in range(2):
+        for col in range(2):
+            cell = QRectF(s * (0.12 + col * 0.42), s * (0.12 + row * 0.42), s * 0.32, s * 0.32)
+            p.setBrush(_grad(cell, "#eaf3ff", "#7fb0e8"))
+            p.drawRect(cell)
+
+
+def _drive_body(p, s, front_color, led):
+    top = QPolygon([
+        QPoint(int(s * 0.10), int(s * 0.42)), QPoint(int(s * 0.28), int(s * 0.24)),
+        QPoint(int(s * 0.94), int(s * 0.24)), QPoint(int(s * 0.76), int(s * 0.42)),
+    ])
+    p.setPen(QPen(QColor("#5c6472"), 1))
+    p.setBrush(QColor("#e2e6ee"))
+    p.drawPolygon(top)
+    side = QPolygon([
+        QPoint(int(s * 0.76), int(s * 0.42)), QPoint(int(s * 0.94), int(s * 0.24)),
+        QPoint(int(s * 0.94), int(s * 0.58)), QPoint(int(s * 0.76), int(s * 0.76)),
+    ])
+    p.setBrush(QColor("#9aa3b2"))
+    p.drawPolygon(side)
+    front = QRectF(s * 0.10, s * 0.42, s * 0.66, s * 0.34)
+    p.setBrush(_grad(front, "#f2f4f8", front_color))
+    p.drawRect(front)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(led))
+    p.drawRect(QRectF(s * 0.16, s * 0.62, s * 0.08, s * 0.06))
+    return front
+
+
+def _draw_drive_fixed(p, s):
+    _drive_body(p, s, "#b8bfcc", "#3fbf3f")
+
+
+def _draw_drive_cdrom(p, s):
+    front = _drive_body(p, s, "#b8bfcc", "#e0a020")
+    p.setPen(QPen(QColor("#7a8291"), 1))
+    p.setBrush(QColor("#d6dae2"))
+    p.drawRect(QRectF(front.left() + s * 0.22, front.top() + s * 0.06, s * 0.40, s * 0.07))
+    disc = QRectF(s * 0.30, s * 0.02, s * 0.52, s * 0.30)
+    p.setBrush(_grad(disc, "#f0f4ff", "#9fb6d8"))
+    p.drawEllipse(disc)
+    p.setBrush(QColor("#ffffff"))
+    p.drawEllipse(disc.adjusted(disc.width() * 0.38, disc.height() * 0.38,
+                                -disc.width() * 0.38, -disc.height() * 0.38))
+
+
+def _draw_drive_floppy(p, s):
+    body = QRectF(s * 0.12, s * 0.12, s * 0.76, s * 0.76)
+    p.setPen(QPen(QColor("#1c2530"), 1))
+    p.setBrush(_grad(body, "#4c5766", "#212a36"))
+    p.drawRoundedRect(body, 2, 2)
+    shutter = QRectF(s * 0.34, s * 0.14, s * 0.34, s * 0.28)
+    p.setBrush(QColor("#c8ccd4"))
+    p.drawRect(shutter)
+    p.setBrush(QColor("#8f96a2"))
+    p.drawRect(QRectF(shutter.left() + shutter.width() * 0.55, shutter.top(),
+                      shutter.width() * 0.45, shutter.height()))
+    label = QRectF(s * 0.22, s * 0.50, s * 0.56, s * 0.34)
+    p.setBrush(QColor("#eceff4"))
+    p.drawRect(label)
+
+
+def _draw_shared_docs(p, s):
+    _draw_docfolder(p, s)
+    _hand(p, s, QRectF(s * 0.02, s * 0.52, s * 0.46, s * 0.44))
+
+
+def _hand(p, s, r):
+    p.setPen(QPen(QColor("#a9762f"), 1))
+    p.setBrush(_grad(r, "#ffdcae", "#e8b070"))
+    palm = QRectF(r.left() + r.width() * 0.18, r.top() + r.height() * 0.42,
+                  r.width() * 0.72, r.height() * 0.54)
+    p.drawRoundedRect(palm, r.width() * 0.16, r.width() * 0.16)
+    for i in range(3):
+        finger = QRectF(palm.left() + i * palm.width() * 0.26,
+                        r.top() + r.height() * (0.10 + i * 0.05),
+                        palm.width() * 0.24, palm.height() * 0.80)
+        p.drawRoundedRect(finger, finger.width() * 0.45, finger.width() * 0.45)
+
+
+def _globe(p, s, r):
+    p.setPen(QPen(QColor("#1f4f8f"), 1))
+    p.setBrush(_grad(r, "#bfe4ff", "#2f7ad0"))
+    p.drawEllipse(r)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawLine(QPointF(r.left(), r.center().y()), QPointF(r.right(), r.center().y()))
+    p.drawEllipse(QRectF(r.center().x() - r.width() * 0.22, r.top(),
+                         r.width() * 0.44, r.height()))
+
+
+def _draw_my_network(p, s):
+    _globe(p, s, QRectF(s * 0.08, s * 0.06, s * 0.56, s * 0.56))
+    mon = QRectF(s * 0.42, s * 0.46, s * 0.50, s * 0.34)
+    p.setPen(QPen(QColor("#2a3a55"), 1))
+    p.setBrush(_grad(mon, "#c9d6ea", "#7f97bd"))
+    p.drawRoundedRect(mon, 2, 2)
+    p.setBrush(QColor("#123a7a"))
+    p.drawRect(mon.adjusted(s * 0.05, s * 0.05, -s * 0.05, -s * 0.08))
+    p.setPen(QPen(QColor("#6a7488"), 1))
+    p.drawLine(QPointF(s * 0.30, s * 0.62), QPointF(s * 0.44, s * 0.62))
+
+
+def _draw_task_newfolder(p, s):
+    _mini_folder(p, s, QRectF(s * 0.06, s * 0.34, s * 0.70, s * 0.50))
+    _sparkle(p, s, QPointF(s * 0.78, s * 0.24), s * 0.22)
+
+
+def _sparkle(p, s, center, radius):
+    p.setPen(QPen(QColor("#e8a800"), max(1, int(s * 0.07)), Qt.PenStyle.SolidLine,
+                  Qt.PenCapStyle.RoundCap))
+    for dx, dy in ((1, 0), (0, 1), (0.7, 0.7), (-0.7, 0.7)):
+        p.drawLine(QPointF(center.x() - dx * radius, center.y() - dy * radius),
+                   QPointF(center.x() + dx * radius, center.y() + dy * radius))
+
+
+def _draw_task_rename(p, s):
+    r = _page(p, s, QRectF(s * 0.08, s * 0.08, s * 0.52, s * 0.78))
+    p.setPen(QPen(QColor("#4a4a4a"), 1))
+    for i in range(3):
+        y = r.top() + r.height() * (0.34 + i * 0.18)
+        p.drawLine(QPointF(r.left() + s * 0.08, y), QPointF(r.right() - s * 0.08, y))
+    shaft = QRectF(s * 0.46, s * 0.40, s * 0.16, s * 0.46)
+    p.setPen(QPen(QColor("#7a5a10"), 1))
+    p.setBrush(_grad(shaft, "#ffe07a", "#e0a800"))
+    p.save()
+    p.translate(s * 0.62, s * 0.30)
+    p.rotate(35)
+    p.drawRect(QRectF(0, 0, s * 0.16, s * 0.44))
+    p.setBrush(QColor("#f5d6a0"))
+    p.drawPolygon(QPolygonF([QPointF(0, s * 0.44), QPointF(s * 0.16, s * 0.44),
+                             QPointF(s * 0.08, s * 0.60)]))
+    p.restore()
+
+
+def _draw_task_move(p, s):
+    _mini_folder(p, s, QRectF(s * 0.44, s * 0.36, s * 0.52, s * 0.48))
+    _page(p, s, QRectF(s * 0.04, s * 0.06, s * 0.34, s * 0.50))
+    _fat_arrow(p, s, QRectF(s * 0.30, s * 0.52, s * 0.40, s * 0.34), "right",
+               "#a6ea7d", "#2f8f16", "#1d5a0c")
+
+
+def _draw_task_copy(p, s):
+    _page(p, s, QRectF(s * 0.06, s * 0.06, s * 0.50, s * 0.70), fill="#f4f4f4")
+    _page(p, s, QRectF(s * 0.34, s * 0.24, s * 0.50, s * 0.70))
+
+
+def _draw_task_delete(p, s):
+    _page(p, s, QRectF(s * 0.10, s * 0.06, s * 0.54, s * 0.74))
+    p.setPen(QPen(QColor("#c01818"), max(2, int(s * 0.13)), Qt.PenStyle.SolidLine,
+                  Qt.PenCapStyle.RoundCap))
+    a, b = s * 0.48, s * 0.94
+    p.drawLine(QPointF(a, a), QPointF(b, b))
+    p.drawLine(QPointF(b, a), QPointF(a, b))
+
+
+def _draw_task_publish(p, s):
+    _page(p, s, QRectF(s * 0.06, s * 0.06, s * 0.50, s * 0.70))
+    _globe(p, s, QRectF(s * 0.40, s * 0.40, s * 0.54, s * 0.54))
+
+
+def _draw_task_share(p, s):
+    _draw_folder(p, s)
+    _hand(p, s, QRectF(s * 0.02, s * 0.50, s * 0.48, s * 0.46))
+
+
+def _draw_task_email(p, s):
+    body = QRectF(s * 0.06, s * 0.22, s * 0.88, s * 0.58)
+    p.setPen(QPen(QColor("#6b6b6b"), 1))
+    p.setBrush(QColor("white"))
+    p.drawRect(body)
+    p.setBrush(QColor("#dfe6f2"))
+    p.drawPolygon(QPolygonF([body.topLeft(),
+                             QPointF(body.center().x(), body.center().y() + s * 0.06),
+                             body.topRight()]))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawLine(body.bottomLeft(), QPointF(body.center().x(), body.center().y() + s * 0.06))
+    p.drawLine(body.bottomRight(), QPointF(body.center().x(), body.center().y() + s * 0.06))
+
+
+def _draw_task_print(p, s):
+    paper = QRectF(s * 0.24, s * 0.04, s * 0.52, s * 0.34)
+    p.setPen(QPen(QColor("#6b6b6b"), 1))
+    p.setBrush(QColor("white"))
+    p.drawRect(paper)
+    body = QRectF(s * 0.08, s * 0.34, s * 0.84, s * 0.36)
+    p.setPen(QPen(QColor("#4a4f58"), 1))
+    p.setBrush(_grad(body, "#eef1f6", "#a8b0bd"))
+    p.drawRoundedRect(body, 2, 2)
+    p.setBrush(QColor("#3fbf3f"))
+    p.setPen(Qt.PenStyle.NoPen)
+    p.drawRect(QRectF(s * 0.14, s * 0.42, s * 0.10, s * 0.06))
+    out = QRectF(s * 0.24, s * 0.62, s * 0.52, s * 0.32)
+    p.setPen(QPen(QColor("#6b6b6b"), 1))
+    p.setBrush(QColor("white"))
+    p.drawRect(out)
+
+
+def _draw_task_restore(p, s):
+    _mini_folder(p, s, QRectF(s * 0.06, s * 0.44, s * 0.60, s * 0.44))
+    _fat_arrow(p, s, QRectF(s * 0.34, s * 0.06, s * 0.58, s * 0.42), "up",
+               "#a6ea7d", "#2f8f16", "#1d5a0c")
+
+
+def _draw_task_empty(p, s):
+    _draw_recycle(p, s, full=False)
+    _sparkle(p, s, QPointF(s * 0.84, s * 0.22), s * 0.16)
+
+
+_SHELL_DRAWERS = {
+    "nav_back": _draw_nav_back, "nav_forward": _draw_nav_forward, "nav_up": _draw_nav_up,
+    "shell_search": _draw_shell_search, "shell_folders": _draw_shell_folders,
+    "shell_views": _draw_shell_views,
+    "drive_fixed": _draw_drive_fixed, "drive_cdrom": _draw_drive_cdrom,
+    "drive_floppy": _draw_drive_floppy,
+    "shared_docs": _draw_shared_docs, "my_network": _draw_my_network,
+    "task_newfolder": _draw_task_newfolder, "task_rename": _draw_task_rename,
+    "task_move": _draw_task_move, "task_copy": _draw_task_copy,
+    "task_delete": _draw_task_delete, "task_publish": _draw_task_publish,
+    "task_share": _draw_task_share, "task_email": _draw_task_email,
+    "task_print": _draw_task_print, "task_restore": _draw_task_restore,
+    "task_empty": _draw_task_empty,
+}
+
+
+def shortcut_icon(name: str, size: int = 32) -> QIcon:
+    """Any icon with the shell's shortcut overlay -- the little white box with
+    a black arrow that XP stamps on the bottom-left corner of every .lnk."""
+    key = ("__shortcut__", name, size)
+    if key in _CACHE:
+        return _CACHE[key]
+    pm = QPixmap(_draw(name, size))
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    box = QRectF(0, size * 0.62, size * 0.38, size * 0.38)
+    p.setPen(QPen(QColor("#5a5a5a"), 1))
+    p.setBrush(QColor("white"))
+    p.drawRect(box)
+    p.setPen(QPen(QColor("#101010"), max(1, int(size * 0.06)), Qt.PenStyle.SolidLine,
+                  Qt.PenCapStyle.RoundCap))
+    tail = QPointF(box.left() + box.width() * 0.26, box.bottom() - box.height() * 0.24)
+    head = QPointF(box.right() - box.width() * 0.22, box.top() + box.height() * 0.24)
+    p.drawLine(tail, head)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor("#101010"))
+    p.drawPolygon(QPolygonF([
+        head,
+        QPointF(head.x() - box.width() * 0.34, head.y() + box.height() * 0.06),
+        QPointF(head.x() - box.width() * 0.06, head.y() + box.height() * 0.34),
+    ]))
+    p.end()
+    ic = QIcon(pm)
+    _CACHE[key] = ic
+    return ic

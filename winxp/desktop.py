@@ -190,6 +190,10 @@ class Desktop(QWidget):
         settings.wallpaper_changed.connect(self.update)
         settings.scheme_changed.connect(self._on_scheme_changed)
         settings.folder_options_changed.connect(self._layout_icons)
+        # Explorer (or any other window) changing the vfs repaints the desktop
+        # too -- a file created in My Documents' window shows up here at once.
+        from .apps.explorer_shell import shell_notifier
+        shell_notifier.changed.connect(self._layout_icons)
 
         self._last_activity = time.time()
         self._screensaver_overlay = None
@@ -305,6 +309,10 @@ class Desktop(QWidget):
         if ev.button() == Qt.MouseButton.RightButton:
             self.show_desktop_menu(ev.globalPosition().toPoint())
 
+    def _notify_shell(self):
+        from .apps.explorer_shell import shell_notifier
+        shell_notifier.changed.emit()
+
     def _layout_icons(self):
         if corruption.health.is_dead("explorer.exe"):
             return  # cursed: shell's dead, desktop is frozen -- no new files render
@@ -418,13 +426,13 @@ class Desktop(QWidget):
         if corruption.guard_fs(self.wm):
             return
         vfs_mod.vfs.create_folder(vfs_mod.vfs.desktop_id)
-        self._layout_icons()
+        self._notify_shell()
 
     def _new_text(self):
         if corruption.guard_fs(self.wm):
             return
         vfs_mod.vfs.create_text_file(vfs_mod.vfs.desktop_id)
-        self._layout_icons()
+        self._notify_shell()
 
     def _new_image(self):
         if corruption.guard_fs(self.wm):
@@ -433,7 +441,7 @@ class Desktop(QWidget):
         vfs_mod.vfs.create_image_file(
             vfs_mod.vfs.desktop_id, data=image_codec.to_bytes(image_codec.blank())
         )
-        self._layout_icons()
+        self._notify_shell()
 
     def _rename_icon(self, node_id):
         if corruption.guard_fs(self.wm):
@@ -460,7 +468,7 @@ class Desktop(QWidget):
                 vfs_mod.vfs.delete(node_id)
             if corruption.guard_system_file(self.wm, node):
                 return
-            self._layout_icons()
+            self._notify_shell()
 
     def _toggle_start(self):
         if self.start_menu.isVisible():

@@ -46,6 +46,12 @@ class Settings(QObject):
         # Add or Remove Programs actually removes things: uninstalled app ids
         # persist here, and Start Menu / New Task / launch() all honor it.
         self.uninstalled_apps: set[str] = set()
+        # Explorer's Favorites menu -- vfs node ids, in the order added.
+        self.explorer_favorites: list[str] = []
+        # Last view mode / sort Explorer was left in; XP remembered these too.
+        self.explorer_view = "icons"
+        self.explorer_sort = "name"
+        self.explorer_groups = False
         self.load()
 
     def load(self):
@@ -64,6 +70,10 @@ class Settings(QObject):
                 self.screensaver_wait_minutes = data.get(
                     "screensaver_wait_minutes", self.screensaver_wait_minutes)
                 self.uninstalled_apps = set(data.get("uninstalled_apps", []))
+                self.explorer_favorites = list(data.get("explorer_favorites", []))
+                self.explorer_view = data.get("explorer_view", self.explorer_view)
+                self.explorer_sort = data.get("explorer_sort", self.explorer_sort)
+                self.explorer_groups = data.get("explorer_groups", self.explorer_groups)
             except Exception:
                 pass
         from . import theme
@@ -79,6 +89,10 @@ class Settings(QObject):
                 "screensaver": self.screensaver,
                 "screensaver_wait_minutes": self.screensaver_wait_minutes,
                 "uninstalled_apps": sorted(self.uninstalled_apps),
+                "explorer_favorites": list(self.explorer_favorites),
+                "explorer_view": self.explorer_view,
+                "explorer_sort": self.explorer_sort,
+                "explorer_groups": self.explorer_groups,
             }, f)
 
     def set_wallpaper(self, name):
@@ -129,6 +143,22 @@ class Settings(QObject):
     def set_screensaver_wait(self, minutes):
         self.screensaver_wait_minutes = max(1, int(minutes))
         self.save()
+
+    def set_explorer_view(self, mode, sort_column, groups):
+        self.explorer_view = mode
+        self.explorer_sort = sort_column
+        self.explorer_groups = bool(groups)
+        self.save()
+
+    def add_explorer_favorite(self, node_id):
+        if node_id not in self.explorer_favorites:
+            self.explorer_favorites.append(node_id)
+            self.save()
+
+    def remove_explorer_favorite(self, node_id):
+        if node_id in self.explorer_favorites:
+            self.explorer_favorites.remove(node_id)
+            self.save()
 
     def is_installed(self, app_id):
         return app_id not in self.uninstalled_apps

@@ -31,6 +31,33 @@ AUDIO = "audio"        # Media Player track (extension varies per imported file)
 VIDEO = "video"        # Media Player clip (extension varies per imported file)
 SHORTCUT = "shortcut"  # desktop shortcut to an app
 
+# Node.drive marks a root-level volume so the My Computer view can render it
+# as a drive (capacity bar, "Total Size"/"Free Space" columns) instead of a
+# plain folder. Removable volumes are intentionally empty and read-only --
+# opening one raises the real "insert a disk" error, same as XP with an empty
+# drive bay.
+DRIVE_FIXED = "fixed"
+DRIVE_FLOPPY = "floppy"
+DRIVE_CDROM = "cdrom"
+
+DRIVE_TOTAL_BYTES = {
+    DRIVE_FIXED: 4_293_496_832,   # ~4.00 GB
+    DRIVE_FLOPPY: 1_457_664,      # 1.44 MB
+    DRIVE_CDROM: 0,               # nothing in the tray
+}
+
+# Windows itself occupies most of C: before the user saves a single file;
+# without a baseline the free-space bar would read 100% free forever.
+DRIVE_BASE_USED = {DRIVE_FIXED: 1_610_612_736}
+
+DRIVE_FS = {DRIVE_FIXED: "NTFS", DRIVE_FLOPPY: "", DRIVE_CDROM: ""}
+
+DRIVE_TYPE_LABELS = {
+    DRIVE_FIXED: "Local Disk",
+    DRIVE_FLOPPY: "3\u00bd-Inch Floppy Disk",
+    DRIVE_CDROM: "CD Drive",
+}
+
 CONTENT_EXT = {TEXT: ".txt", RICH: ".html", IMAGE: ".png"}
 EXTENSIONED_KINDS = (TEXT, RICH, IMAGE, AUDIO, VIDEO)
 
@@ -99,13 +126,17 @@ class Node:
     modified: float = field(default_factory=time.time)
     hidden: bool = False                                # Properties/Folder Options "Hidden" attribute
     read_only: bool = False                             # Properties "Read-only" attribute (metadata only)
+    drive: str = ""                                     # root-level volume: DRIVE_FIXED / DRIVE_FLOPPY / DRIVE_CDROM
+    deleted_from: str = ""                              # parent id at the moment it went to the Recycle Bin
+    deleted_at: float = 0.0                             # when it went there -- Recycle Bin's "Date Deleted" column
 
     def to_dict(self):
         return dict(
             id=self.id, name=self.name, kind=self.kind, parent=self.parent,
             children=list(self.children), icon=self.icon, target=self.target,
             ext=self.ext, created=self.created, modified=self.modified,
-            hidden=self.hidden, read_only=self.read_only,
+            hidden=self.hidden, read_only=self.read_only, drive=self.drive,
+            deleted_from=self.deleted_from, deleted_at=self.deleted_at,
         )
 
     @staticmethod
@@ -113,6 +144,9 @@ class Node:
         d.setdefault("ext", "")
         d.setdefault("hidden", False)
         d.setdefault("read_only", False)
+        d.setdefault("drive", "")
+        d.setdefault("deleted_from", "")
+        d.setdefault("deleted_at", 0.0)
         return Node(**d)
 
 
@@ -130,10 +164,11 @@ class VFS:
         self.desktop_id: str = ""
         self.my_docs_id: str = ""
         self.my_music_id: str = ""
+        self.shared_docs_id: str = ""
         self.recycle_id: str = ""
         self.system32_id: str = ""
 
-    # -- bootstrap ---------------------------------------------------
+    # -- bootstrap ---
     def load_or_init(self):
         if os.path.exists(STORE_PATH):
             try:
@@ -161,11 +196,16 @@ class VFS:
         self.my_music_id = my_music.id
         desktop.children.append(my_music.id)
 
+        shared = self._new(FOLDER, "Shared Documents", desktop.id)
+        self.shared_docs_id = shared.id
+        desktop.children.append(shared.id)
+
         recycle = self._new(FOLDER, "Recycle Bin", desktop.id)
         self.recycle_id = recycle.id
         desktop.children.append(recycle.id)
 
         self._seed_system32(root)
+        self._seed_removable_drives(root)
 
         readme = self._new(TEXT, "Welcome.txt", my_docs.id)
         my_docs.children.append(readme.id)
@@ -196,6 +236,7 @@ class VFS:
         # a free pass around the read-only gate. See corruption.SYSTEM32_STOP_MAP.
         local_disk = self._new(FOLDER, "Local Disk (C:)", root.id)
         local_disk.read_only = True
+        local_disk.drive = DRIVE_FIXED
         root.children.append(local_disk.id)
         windows = self._new(FOLDER, "WINDOWS", local_disk.id)
         windows.read_only = True
@@ -220,13 +261,25 @@ class VFS:
             version = f"{random.randint(5,6)}.{random.randint(0,3)}.{random.randint(2600,3790)}.{random.randint(0,9999)}"
             self.write_content(f.id, f"{fname}\r\nFile version: {version}\r\nMicrosoft Corporation")
 
+    def _seed_removable_drives(self, root):
+        """A: and D: exist as volumes with no media in them, the same way an
+        XP box shipped with an empty floppy bay and an empty optical drive."""
+        have = {c.drive for c in self.children_of(root.id)}
+        for name, kind in (("3\u00bd Floppy (A:)", DRIVE_FLOPPY), ("CD Drive (D:)", DRIVE_CDROM)):
+            if kind in have:
+                continue
+            node = self._new(FOLDER, name, root.id)
+            node.read_only = True
+            node.drive = kind
+            root.children.append(node.id)
+
     def _new(self, kind, name, parent, icon="", target="", ext=""):
         node = Node(id=str(uuid.uuid4())[:8], name=name, kind=kind,
                     parent=parent, icon=icon, target=target, ext=ext)
         self.nodes[node.id] = node
         return node
 
-    # -- persistence ---------------------------------------------------
+    # -- persistence ---
     def save(self):
         os.makedirs(STORE_DIR, exist_ok=True)
         data = {
@@ -234,6 +287,7 @@ class VFS:
             "desktop_id": self.desktop_id,
             "my_docs_id": self.my_docs_id,
             "my_music_id": self.my_music_id,
+            "shared_docs_id": self.shared_docs_id,
             "recycle_id": self.recycle_id,
             "system32_id": self.system32_id,
             "nodes": {k: v.to_dict() for k, v in self.nodes.items()},
@@ -250,6 +304,7 @@ class VFS:
         self.desktop_id = data["desktop_id"]
         self.my_docs_id = data["my_docs_id"]
         self.my_music_id = data.get("my_music_id", "")
+        self.shared_docs_id = data.get("shared_docs_id", "")
         self.recycle_id = data["recycle_id"]
         self.system32_id = data.get("system32_id", "")
         self.nodes = {}
@@ -267,13 +322,74 @@ class VFS:
             self.my_music_id = music.id
             self.get(self.desktop_id).children.append(music.id)
             migrated = True
+        if not self.shared_docs_id or self.get(self.shared_docs_id) is None:
+            # migrating from a version without Shared Documents
+            shared = self._new(FOLDER, "Shared Documents", self.desktop_id)
+            self.shared_docs_id = shared.id
+            self.get(self.desktop_id).children.append(shared.id)
+            migrated = True
         if not self.system32_id or self.get(self.system32_id) is None:
             # migrating from a version without C:\WINDOWS\system32
             self._seed_system32(self.get(self.root_id))
             migrated = True
+        if self._ensure_drives():
+            migrated = True
         if migrated:
             self.save()
         self._seed_sample_media()
+
+    def _ensure_drives(self) -> bool:
+        """Migrating from a version with no volume concept: tag C: as a fixed
+        disk and add the removable bays. True if anything changed."""
+        root = self.get(self.root_id)
+        if root is None:
+            return False
+        changed = False
+        for child in self.children_of(root.id):
+            if not child.drive and child.name.startswith("Local Disk"):
+                child.drive = DRIVE_FIXED
+                changed = True
+        before = len(root.children)
+        self._seed_removable_drives(root)
+        return changed or len(root.children) != before
+
+    def drives(self) -> list:
+        return [c for c in self.children_of(self.root_id) if c.drive]
+
+    def drive_of(self, node_id):
+        """The volume a node lives on, or None for shell-only folders
+        (Desktop, My Documents, Recycle Bin) that aren't under a drive."""
+        n = self.get(node_id)
+        while n:
+            if n.drive:
+                return n
+            n = self.get(n.parent) if n.parent else None
+        return None
+
+    def drive_usage(self, node_id) -> tuple[int, int]:
+        """(used, total) bytes for a volume node."""
+        node = self.get(node_id)
+        if not node or not node.drive:
+            return 0, 0
+        # An empty floppy bay / empty optical tray reports nothing at all,
+        # the same way XP left Total Size and Free Space blank for them.
+        total = DRIVE_TOTAL_BYTES.get(node.drive, 0) if node.drive == DRIVE_FIXED else 0
+        if not total:
+            return 0, 0
+        used = DRIVE_BASE_USED.get(node.drive, 0) + self.tree_size(node_id)
+        return min(used, total), total
+
+    def tree_size(self, node_id) -> int:
+        total = 0
+        for child in self.children_of(node_id):
+            total += self.tree_size(child.id) if child.kind == FOLDER else self.size_of(child.id)
+        return total
+
+    def size_of(self, node_id) -> int:
+        try:
+            return os.path.getsize(self.content_path(node_id))
+        except OSError:
+            return 0
 
     def _seed_sample_media(self):
         """Give Media Player something real to play without ever reaching
@@ -299,7 +415,7 @@ class VFS:
         else:
             self.write_content(node.id, legacy_content)
 
-    # -- content store ---------------------------------------------------
+    # -- content store ---
     def content_path(self, node_id) -> str:
         """Real path on disk holding this node's content -- usable directly
         by things that need a real file path, like QMediaPlayer."""
@@ -347,7 +463,7 @@ class VFS:
         except FileNotFoundError:
             pass
 
-    # -- operations ---------------------------------------------------
+    # -- operations ---
     def get(self, node_id) -> Optional[Node]:
         return self.nodes.get(node_id)
 
@@ -394,6 +510,23 @@ class VFS:
             self.write_blob(node.id, data)
         return node
 
+    def create_rich_file(self, parent_id, name="New Rich Text Document.rtf", content=""):
+        parent = self.get(parent_id)
+        name = self._unique_name(parent_id, name)
+        node = self._new(RICH, name, parent_id)
+        parent.children.append(node.id)
+        self.save()
+        self.write_content(node.id, content)
+        return node
+
+    def create_shortcut(self, parent_id, name, target, icon=""):
+        parent = self.get(parent_id)
+        node = self._new(SHORTCUT, self._unique_name(parent_id, name), parent_id,
+                         icon=icon, target=target)
+        parent.children.append(node.id)
+        self.save()
+        return node
+
     def create_audio_file(self, parent_id, name, data: bytes, ext):
         return self._create_media_file(AUDIO, parent_id, name, data, ext)
 
@@ -422,6 +555,56 @@ class VFS:
                 return candidate
             i += 1
 
+    def copy(self, node_id, target_parent_id, name=None):
+        """Deep copy of a node (and, for folders, everything under it) into
+        another folder. Content files are copied byte-for-byte, so the copy is
+        a real independent file rather than a second name for the same bytes."""
+        src = self.get(node_id)
+        target = self.get(target_parent_id)
+        if not src or not target or target.kind != FOLDER:
+            return None
+        node = self._copy_tree(src, target_parent_id, name or src.name)
+        self.save()
+        return node
+
+    def _copy_tree(self, src, parent_id, name):
+        parent = self.get(parent_id)
+        node = self._new(src.kind, self._unique_name(parent_id, name), parent_id,
+                         icon=src.icon, target=src.target, ext=src.ext)
+        node.hidden = src.hidden
+        node.read_only = src.read_only
+        parent.children.append(node.id)
+        if src.kind != FOLDER:
+            try:
+                with open(self.content_path(src.id), "rb") as f:
+                    data = f.read()
+            except OSError:
+                data = None
+            if data is not None:
+                os.makedirs(CONTENT_DIR, exist_ok=True)
+                with open(self.content_path(node.id), "wb") as f:
+                    f.write(data)
+        for child in self.children_of(src.id):
+            self._copy_tree(child, node.id, child.name)
+        return node
+
+    def restore(self, node_id) -> bool:
+        """Recycle Bin > Restore: put the node back where it was deleted from.
+        If that folder is itself gone, XP recreates the path; there's nothing
+        to recreate here, so it falls back to the Desktop rather than failing."""
+        node = self.get(node_id)
+        if not node or node.parent != self.recycle_id:
+            return False
+        target = node.deleted_from if self.get(node.deleted_from) else self.desktop_id
+        node.deleted_from = ""
+        node.deleted_at = 0.0
+        self.move(node_id, target)
+        return True
+
+    def empty_recycle_bin(self):
+        for child in list(self.children_of(self.recycle_id)):
+            self.delete(child.id, permanent=True)
+
     def rename(self, node_id, new_name):
         node = self.get(node_id)
         if node:
@@ -446,7 +629,13 @@ class VFS:
         recycle_exists = self.get(self.recycle_id) is not None
         if (not permanent and recycle_exists
                 and node.parent != self.recycle_id and node_id != self.recycle_id):
+            # Remember where it came from so Restore can put it back, same as
+            # the real bin's INFO2 record.
+            origin = node.parent
             self.move(node_id, self.recycle_id)
+            node.deleted_from = origin
+            node.deleted_at = time.time()
+            self.save()
             return
         # No Recycle Bin to move it to (cursed: the bin itself got deleted) --
         # force a real, permanent delete instead of crashing on a missing parent.

@@ -40,6 +40,29 @@ to build the real path on disk. This is also what `winxp/apps/wmp.py` hands
 directly to `QUrl.fromLocalFile()` for playback — the vfs content store
 doubles as real, valid files any real media backend can open.
 
+## Shell metadata on `Node`
+
+Three fields exist purely so the shell can behave the way the real one did;
+none of them affect where content lives on disk.
+
+- `drive` — `""` for ordinary folders, otherwise `DRIVE_FIXED` /
+  `DRIVE_FLOPPY` / `DRIVE_CDROM`. Only root-level nodes carry it. It drives
+  the My Computer view's grouping, the drive icons, the capacity bar and the
+  Total Size / Free Space columns. `drive_usage()` reports a baseline
+  (`DRIVE_BASE_USED`) plus the real summed size beneath the volume for C:,
+  and nothing at all for the removable bays — an empty floppy drive has no
+  capacity to report.
+- `deleted_from` / `deleted_at` — written when a node moves to the Recycle
+  Bin, the equivalent of the real bin's `INFO2` record. Without them
+  `restore()` has nowhere to put a file back and the bin's "Original
+  Location" / "Date Deleted" columns have nothing to show. If the original
+  parent is itself gone by then, `restore()` falls back to the Desktop.
+
+All three are `setdefault`-ed in `Node.from_dict`, so a store written before
+they existed loads unchanged; `_ensure_drives()` tags an existing
+`Local Disk (C:)` and adds the removable bays on first load after the
+upgrade, same shape as the other migrations below.
+
 ## API surface (`winxp/vfs.py`)
 
 - `read_content(node_id) -> str` / `write_content(node_id, text)` — text kinds
@@ -49,6 +72,15 @@ doubles as real, valid files any real media backend can open.
 - `content_path(node_id) -> str` — real path on disk, for anything (like
   `QMediaPlayer`) that needs one directly instead of going through
   read_content/read_blob
+- `copy(node_id, target_parent_id, name=None)` — deep copy of a node and,
+  for folders, everything under it; content files are copied byte-for-byte
+  so the copy is a real independent file, not a second name for the same
+  bytes
+- `restore(node_id)` / `empty_recycle_bin()` — the Recycle Bin verbs
+- `size_of(node_id)` / `tree_size(node_id)` — bytes for one node, or for
+  everything beneath a folder
+- `drives()` / `drive_of(node_id)` / `drive_usage(node_id)` — the volume
+  model the My Computer view reads
 
 `delete(node_id, permanent=True)` removes the matching content file too, so
 `ntfs/` doesn't accumulate orphans from deleted files. (This has to compute
