@@ -233,3 +233,4 @@ __marimo__/
 # Build artifacts
 *.xml
 
+tmp/
