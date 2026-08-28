@@ -937,12 +937,13 @@ def _draw_allprograms(p, s):
 
 def _draw_xp_flag(p, s):
     """Simplified four-pane waving-flag mark used on the Start button."""
-    cx, cy = s * 0.52, s * 0.50
+    cx, cy = s * 0.5, s * 0.5
+    gap, pane = s * 0.045, s * 0.40
     panes = [
-        ("#f6552b", QPointF(cx - s * 0.46, cy - s * 0.46), QPointF(cx - s * 0.04, cy - s * 0.34)),
-        ("#7cb92e", QPointF(cx + s * 0.02, cy - s * 0.40), QPointF(cx + s * 0.46, cy - s * 0.28)),
-        ("#1f8ee8", QPointF(cx - s * 0.46, cy - s * 0.24), QPointF(cx - s * 0.04, cy + s * 0.24)),
-        ("#ffc20e", QPointF(cx + s * 0.02, cy - s * 0.18), QPointF(cx + s * 0.46, cy + s * 0.30)),
+        ("#f6552b", QPointF(cx - gap - pane, cy - gap - pane), QPointF(cx - gap, cy - gap)),
+        ("#7cb92e", QPointF(cx + gap, cy - gap - pane), QPointF(cx + gap + pane, cy - gap)),
+        ("#1f8ee8", QPointF(cx - gap - pane, cy + gap), QPointF(cx - gap, cy + gap + pane)),
+        ("#ffc20e", QPointF(cx + gap, cy + gap), QPointF(cx + gap + pane, cy + gap + pane)),
     ]
     p.setPen(Qt.PenStyle.NoPen)
     for color, top_left, bottom_right in panes:

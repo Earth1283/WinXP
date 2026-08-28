@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QPoint, QSize, Qt, QTime, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QPainter
+from PyQt6.QtCore import QPoint, QRectF, QSize, Qt, QTime, QTimer, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath
 from PyQt6.QtWidgets import (
     QCheckBox, QHBoxLayout, QLabel, QMenu, QPushButton, QSlider, QVBoxLayout, QWidget,
 )
@@ -15,16 +15,39 @@ class StartButton(QPushButton):
         super().__init__(parent)
         self.setFixedSize(94, 30)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._flag = icons.icon("xp_flag", 20).pixmap(20, 20)
+        self._flag = icons.icon("xp_flag", 18).pixmap(18, 18)
+        self._path = self._build_path()
+
+    def _build_path(self):
+        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        h = r.height()
+        mid = r.left() + h / 2
+        tail = 7.0
+
+        cap = QPainterPath()
+        cap.addEllipse(QRectF(r.left(), r.top(), h, h))
+
+        body = QPainterPath()
+        body.moveTo(mid, r.top())
+        body.lineTo(r.right() - tail, r.top())
+        body.lineTo(r.right(), r.top() + tail)
+        body.lineTo(r.right(), r.bottom() - tail)
+        body.lineTo(r.right() - tail, r.bottom())
+        body.lineTo(mid, r.bottom())
+        body.closeSubpath()
+
+        return cap.united(body)
 
     def paintEvent(self, ev):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        r = self.rect().adjusted(1, 1, -1, -1)
+        r = self.rect()
         pressed = self.isDown()
         scheme = theme.current_scheme()
         top = QColor(scheme["start_top"]) if not pressed else QColor(scheme["start_bot"]).darker(115)
         bot = QColor(scheme["start_bot"]) if not pressed else QColor(scheme["start_bot"]).darker(140)
+
+        p.setClipPath(self._path)
         for y in range(r.height()):
             t = y / max(1, r.height() - 1)
             c = QColor(
@@ -33,15 +56,25 @@ class StartButton(QPushButton):
                 int(top.blue() + (bot.blue() - top.blue()) * t),
             )
             p.setPen(c)
-            p.drawLine(r.left(), r.top() + y, r.right(), r.top() + y)
-        p.drawPixmap(6, (r.height() - 20) // 2 + r.top(), self._flag)
+            p.drawLine(0, y, r.width(), y)
+        if not pressed:
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(255, 255, 255, 70))
+            p.drawRect(0, 0, r.width(), int(r.height() * 0.42))
+        p.setClipping(False)
+
+        p.setPen(QColor(bot).darker(150))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawPath(self._path)
+
+        p.drawPixmap(9, (r.height() - 18) // 2 + 1, self._flag)
         f = p.font()
         f.setBold(True)
         f.setItalic(True)
         f.setPixelSize(15)
         p.setFont(f)
         p.setPen(QColor("white"))
-        p.drawText(r.adjusted(28, 0, 0, 0), Qt.AlignmentFlag.AlignVCenter, "start")
+        p.drawText(r.adjusted(30, 0, -6, 0), Qt.AlignmentFlag.AlignVCenter, "start")
 
 
 class TaskButton(QPushButton):
@@ -146,6 +179,40 @@ class Clock(QLabel):
         self.setText(QTime.currentTime().toString("h:mm AP"))
 
 
+class Groove(QWidget):
+    """A carved-in divider line -- dark edge then a light highlight, the way
+    Luna separates the Start button/tray from the rest of the taskbar."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedWidth(3)
+
+    def paintEvent(self, ev):
+        p = QPainter(self)
+        p.setPen(QColor("#0a1f5c"))
+        p.drawLine(0, 2, 0, self.height() - 2)
+        p.setPen(QColor("#4a7fd6"))
+        p.drawLine(1, 2, 1, self.height() - 2)
+
+
+class TrayBox(QWidget):
+    """System tray well with a hand-painted sunken (inset) bevel."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def paintEvent(self, ev):
+        p = QPainter(self)
+        r = self.rect().adjusted(0, 3, 0, -3)
+        p.fillRect(r, QColor("#123a8f"))
+        p.setPen(QColor("#0a1f5c"))
+        p.drawLine(r.left(), r.top(), r.right(), r.top())
+        p.drawLine(r.left(), r.top(), r.left(), r.bottom())
+        p.setPen(QColor("#5a8fe0"))
+        p.drawLine(r.left(), r.bottom(), r.right(), r.bottom())
+        p.drawLine(r.right(), r.top(), r.right(), r.bottom())
+
+
 class Taskbar(QWidget):
     start_clicked = pyqtSignal()
     task_clicked = pyqtSignal(object)
@@ -164,10 +231,7 @@ class Taskbar(QWidget):
         self.start_btn.clicked.connect(self.start_clicked.emit)
         layout.addWidget(self.start_btn)
 
-        sep = QLabel()
-        sep.setFixedWidth(2)
-        sep.setStyleSheet("background: #123a8f;")
-        layout.addWidget(sep)
+        layout.addWidget(Groove())
 
         self.task_area = QWidget()
         self.task_layout = QHBoxLayout(self.task_area)
@@ -176,10 +240,11 @@ class Taskbar(QWidget):
         self.task_layout.addStretch(1)
         layout.addWidget(self.task_area, 1)
 
-        tray = QWidget()
-        tray.setStyleSheet("background: #123a8f; border: 1px inset #0a1f5c; border-radius: 2px;")
+        layout.addWidget(Groove())
+
+        tray = TrayBox()
         tray_l = QHBoxLayout(tray)
-        tray_l.setContentsMargins(4, 0, 4, 0)
+        tray_l.setContentsMargins(6, 3, 6, 3)
         self.speaker = SpeakerButton()
         tray_l.addWidget(self.speaker)
         self.clock = Clock()
