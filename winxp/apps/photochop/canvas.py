@@ -86,6 +86,7 @@ class Canvas(QWidget):
         self._clone_offset: QPointF | None = None
         self._smudge_pickup: QImage | None = None
         self._pre_stroke: QImage | None = None
+        self._pre_mask_stroke: QImage | None = None
         self._crop_rect: QRectF | None = None
         self._crop_handle = None
         self._transform: dict | None = None
@@ -222,32 +223,76 @@ class Canvas(QWidget):
         self._paint_tool_overlay(p, r)
         p.end()
 
+    def _transform_compose(self, t: dict) -> QImage:
+        """Paint a free transform's remainder + moved piece onto a blank,
+        full-canvas buffer -- the actual result, shared by the live preview
+        and by commit_transform."""
+        out = self.doc.blank_image()
+        p = QPainter(out)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        p.drawImage(0, 0, t["remainder"])
+        quad = t.get("quad")
+        src = t["source"]
+        if quad:
+            from PyQt6.QtGui import QTransform
+            src_quad = QPolygonF([QPointF(0, 0), QPointF(src.width(), 0),
+                                  QPointF(src.width(), src.height()), QPointF(0, src.height())])
+            tr = QTransform()
+            if QTransform.quadToQuad(src_quad, QPolygonF(quad), tr):
+                p.setTransform(tr)
+                p.drawImage(0, 0, src)
+                p.resetTransform()
+        else:
+            p.drawImage(t["rect"], src)
+        p.end()
+        return out
+
+    def _mask_swapped_composite(self, preview_mask: QImage) -> QImage:
+        """Recompute the document as if the active layer's mask were already
+        `preview_mask`, without touching the real layer state yet."""
+        layer = self.doc.active
+        original_mask = layer.mask
+        layer.mask = preview_mask
+        saved_cache = self.doc._composite_cache
+        self.doc._composite_cache = None
+        try:
+            return self.doc.composite()
+        finally:
+            layer.mask = original_mask
+            self.doc._composite_cache = saved_cache
+
     def _live_preview(self, composite: QImage) -> QImage:
         """Layer in whatever the current gesture is doing but hasn't committed."""
+        layer = self.doc.active
+        editing_mask = layer.editing_mask()
+        viewing_mask = self.doc.viewing_mask and layer.mask is not None
         if self._stroke is None and self._transform is None:
-            return composite
-        out = composite.copy()
+            return layer.mask.copy() if viewing_mask else composite
+
+        if self._transform is not None and editing_mask:
+            preview_mask = self._transform_compose(self._transform)
+            return preview_mask if viewing_mask else self._mask_swapped_composite(preview_mask)
+
+        if (self._stroke is not None and not getattr(self._stroke, "quick_mask", False)
+                and editing_mask and not viewing_mask):
+            buf = self._stroke.buffer
+            if self.doc.has_selection():
+                buf = alpha_multiply(buf, self.doc.selection.mask)
+            saved = self._stroke.buffer
+            self._stroke.buffer = buf
+            try:
+                preview_mask = self._stroke.commit(
+                    layer.mask.copy(), self.opts.get("mode", "Normal"), False)
+            finally:
+                self._stroke.buffer = saved
+            return self._mask_swapped_composite(preview_mask)
+
+        out = layer.mask.copy() if viewing_mask else composite.copy()
         if self._transform is not None:
             t = self._transform
             painter = QPainter(out)
-            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
             painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
-            painter.drawImage(0, 0, t["remainder"])
-            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
-            quad = t.get("quad")
-            if quad:
-                from PyQt6.QtGui import QTransform
-                src = t["source"]
-                src_quad = QPolygonF([QPointF(0, 0), QPointF(src.width(), 0),
-                                      QPointF(src.width(), src.height()),
-                                      QPointF(0, src.height())])
-                tr = QTransform()
-                if QTransform.quadToQuad(src_quad, QPolygonF(quad), tr):
-                    painter.setTransform(tr)
-                    painter.drawImage(0, 0, src)
-                    painter.resetTransform()
-            else:
-                painter.drawImage(t["rect"], t["source"])
+            painter.drawImage(0, 0, self._transform_compose(t))
             painter.end()
         if self._stroke is not None and getattr(self._stroke, "quick_mask", False):
             painter = QPainter(out)
@@ -255,9 +300,8 @@ class Canvas(QWidget):
             painter.drawImage(0, 0, self._stroke.buffer)
             painter.end()
         elif self._stroke is not None:
-            layer = self.doc.active
             painter = QPainter(out)
-            painter.setOpacity(self._stroke.opacity * layer.opacity)
+            painter.setOpacity(self._stroke.opacity * (1.0 if editing_mask else layer.opacity))
             if self._stroke.erase:
                 painter.setCompositionMode(
                     QPainter.CompositionMode.CompositionMode_DestinationOut)
@@ -769,8 +813,27 @@ class Canvas(QWidget):
     # -- move -----------------------------------------------------------
 
     def _press_move(self, pos, ev):
-        self._pre_stroke = self.doc.active.image.copy()
+        layer = self.doc.active
+        self._pre_stroke = layer.image.copy()
+        self._pre_mask_stroke = layer.mask.copy() if layer.mask is not None else None
         self._layer_drag_origin = pos
+
+    def _shift_with_selection(self, backup: QImage, dx: int, dy: int) -> QImage:
+        moved = self.doc.blank_image()
+        p = QPainter(moved)
+        if self.doc.has_selection():
+            floating = alpha_multiply(backup, self.doc.selection.mask)
+            rest = backup.copy()
+            pr = QPainter(rest)
+            pr.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOut)
+            pr.drawImage(0, 0, _grey_to_alpha(self.doc.selection.mask))
+            pr.end()
+            p.drawImage(0, 0, rest)
+            p.drawImage(dx, dy, floating)
+        else:
+            p.drawImage(dx, dy, backup)
+        p.end()
+        return moved
 
     def _move_move(self, pos, ev):
         if self._layer_drag_origin is None or self._pre_stroke is None:
@@ -781,21 +844,15 @@ class Canvas(QWidget):
         if layer.locked_position or layer.locked_all:
             self.status_message.emit("Could not move: the layer is locked.")
             return
-        moved = self.doc.blank_image()
-        p = QPainter(moved)
-        if self.doc.has_selection():
-            floating = alpha_multiply(self._pre_stroke, self.doc.selection.mask)
-            rest = self._pre_stroke.copy()
-            pr = QPainter(rest)
-            pr.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOut)
-            pr.drawImage(0, 0, _grey_to_alpha(self.doc.selection.mask))
-            pr.end()
-            p.drawImage(0, 0, rest)
-            p.drawImage(dx, dy, floating)
-        else:
-            p.drawImage(dx, dy, self._pre_stroke)
-        p.end()
-        layer.image = moved
+        has_mask = layer.mask is not None
+        # Linked, both move together; unlinked, only whichever is targeted --
+        # exactly what the chain icon between the two thumbnails promises.
+        move_mask = has_mask and (layer.mask_active or layer.mask_linked)
+        move_image = not (has_mask and layer.mask_active and not layer.mask_linked)
+        if move_image:
+            layer.image = self._shift_with_selection(self._pre_stroke, dx, dy)
+        if move_mask:
+            layer.mask = self._shift_with_selection(self._pre_mask_stroke, dx, dy)
         self.doc.invalidate()
 
     def _release_move(self, pos, ev):
@@ -803,6 +860,7 @@ class Canvas(QWidget):
             self._record("Move")
             self.document_changed.emit()
         self._pre_stroke = None
+        self._pre_mask_stroke = None
         self._layer_drag_origin = None
 
     # -- crop / slice ---------------------------------------------------
@@ -872,17 +930,26 @@ class Canvas(QWidget):
         if layer.locked_pixels or layer.locked_all:
             self.status_message.emit("Could not use the tool: the layer is locked.")
             return None
-        if layer.kind in ("adjustment", "type"):
+        if layer.kind in ("adjustment", "type") and not layer.editing_mask():
             self.status_message.emit(
                 "Could not use the tool because the layer is not a pixel layer.")
             return None
+        editing_mask = layer.editing_mask()
+        if erase and editing_mask:
+            # A mask has no alpha channel of its own to erase -- Photoshop
+            # always paints the background colour instead, exactly as it
+            # does on the locked Background layer.
+            erase = False
+            color = self.win.bg_color
         brush = dict(self.opts.get("brush", {}))
         if self.tool() == "pencil":
             brush["hardness"] = 100
-        self._pre_stroke = layer.image.copy()
+        self._pre_stroke = layer.target_image().copy()
         col = color if color is not None else (
             self.win.fg_color if self._button == Qt.MouseButton.LeftButton
             else self.win.bg_color)
+        if editing_mask:
+            col = _grayscale_color(col)
         stroke = brushes.Stroke(
             QSize(self.doc.width, self.doc.height), brush, col,
             self.opts.get(flow_key, 100) / 100.0,
@@ -933,7 +1000,7 @@ class Canvas(QWidget):
     def _press_pencil(self, pos, ev):
         col = None
         if self.opts.get("auto_erase"):
-            under = _pixel_at(self.doc.active.image, pos)
+            under = _pixel_at(self.doc.active.target_image(), pos)
             if under is not None and under.rgb() == self.win.fg_color.rgb():
                 col = self.win.bg_color
         if self._begin_stroke(color=col):
@@ -976,7 +1043,7 @@ class Canvas(QWidget):
         self.document_changed.emit()
 
     def _press_bg_eraser(self, pos, ev):
-        self._bg_target = _pixel_at(self.doc.active.image, pos)
+        self._bg_target = _pixel_at(self.doc.active.target_image(), pos)
         if self._begin_stroke(erase=True):
             self._stroke.to(pos)
 
@@ -994,8 +1061,10 @@ class Canvas(QWidget):
         if self.doc.has_selection():
             buf = alpha_multiply(buf, self.doc.selection.mask)
             self._stroke.buffer = buf
-        layer.image = self._stroke.commit(
-            layer.image, self.opts.get("mode", "Normal"), layer.locked_transparency)
+        editing_mask = layer.editing_mask()
+        layer.set_target_image(self._stroke.commit(
+            layer.target_image(), self.opts.get("mode", "Normal"),
+            False if editing_mask else layer.locked_transparency))
         self._stroke = None
         self._pre_stroke = None
         self.doc.invalidate()
@@ -1018,7 +1087,7 @@ class Canvas(QWidget):
             return
         if self._clone_offset is None or not self.opts.get("aligned", True):
             self._clone_offset = pos - self._clone_src
-        self._pre_stroke = self.doc.active.image.copy()
+        self._pre_stroke = self.doc.active.target_image().copy()
         self._clone_dab(pos)
 
     def _move_clone_stamp(self, pos, ev):
@@ -1038,19 +1107,24 @@ class Canvas(QWidget):
         self._stamp_from(source, src_pt, pos)
 
     def _stamp_from(self, source: QImage, src_pt: QPointF, dst_pt: QPointF, heal=False):
+        layer = self.doc.active
+        editing_mask = layer.editing_mask()
+        dest = layer.target_image()
         brush = self.opts.get("brush", {})
         size = max(1, int(brush.get("size", 13)))
         src_rect = QRect(int(src_pt.x() - size / 2), int(src_pt.y() - size / 2), size, size)
         patch = source.copy(src_rect)
         if heal:
             dst_rect = QRect(int(dst_pt.x() - size / 2), int(dst_pt.y() - size / 2), size, size)
-            patch = brushes.heal_patch(self.doc.active.image.copy(dst_rect), patch)
+            patch = brushes.heal_patch(dest.copy(dst_rect), patch)
+        if editing_mask:
+            patch = _grayscale_image(patch)
         mask = brushes.stamp(size, brush.get("hardness", 100))
         p = QPainter(patch)
         p.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
         p.drawImage(0, 0, mask)
         p.end()
-        target = QPainter(self.doc.active.image)
+        target = QPainter(dest)
         target.setOpacity(self.opts.get("opacity", 100) / 100.0)
         if self.doc.has_selection():
             target.setClipPath(self.doc.selection.path or QPainterPath())
@@ -1062,7 +1136,7 @@ class Canvas(QWidget):
         from .layer_styles import _pattern_tile
         self._pattern_img = _tile_to_full(_pattern_tile(self.opts.get("pattern", "Checkerboard")),
                                           self.doc.width, self.doc.height)
-        self._pre_stroke = self.doc.active.image.copy()
+        self._pre_stroke = self.doc.active.target_image().copy()
         self._stamp_from(self._pattern_img, pos, pos)
 
     def _move_pattern_stamp(self, pos, ev):
@@ -1088,7 +1162,7 @@ class Canvas(QWidget):
             return
         if self._clone_offset is None or not self.opts.get("aligned", True):
             self._clone_offset = pos - self._clone_src
-        self._pre_stroke = self.doc.active.image.copy()
+        self._pre_stroke = self.doc.active.target_image().copy()
         self._stamp_from(self._pre_stroke, pos - self._clone_offset, pos, heal=True)
 
     def _move_healing(self, pos, ev):
@@ -1197,6 +1271,8 @@ class Canvas(QWidget):
         if layer.locked_all or layer.locked_pixels:
             self.status_message.emit("Could not use the gradient tool: the layer is locked.")
             return
+        editing_mask = layer.editing_mask()
+        target = layer.target_image()
         start, end = self._drag_start, pos
         if self._shift:
             end = _constrain_45(start, end)
@@ -1205,14 +1281,16 @@ class Canvas(QWidget):
         p = QPainter(fill)
         p.fillRect(fill.rect(), QBrush(grad))
         p.end()
+        if editing_mask:
+            fill = _grayscale_image(fill)
         if self.opts.get("dither"):
             fill = ops.add_noise(fill, 1.5, monochromatic=True)
         if self.doc.has_selection():
             fill = alpha_multiply(fill, self.doc.selection.mask)
-        p = QPainter(layer.image)
+        p = QPainter(target)
         p.setOpacity(self.opts.get("opacity", 100) / 100.0)
         from .model import _QT_MODES
-        if layer.locked_transparency:
+        if layer.locked_transparency and not editing_mask:
             p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceAtop)
         else:
             p.setCompositionMode(_QT_MODES.get(self.opts.get("mode", "Normal"),
@@ -1270,7 +1348,9 @@ class Canvas(QWidget):
         if layer.locked_all or layer.locked_pixels:
             self.status_message.emit("Could not use the paint bucket: the layer is locked.")
             return
-        source = (self.doc.composite() if self.opts.get("sample_merged") else layer.image)
+        editing_mask = layer.editing_mask()
+        target = layer.target_image()
+        source = (self.doc.composite() if self.opts.get("sample_merged") else target)
         mask = magic_wand_mask(source, pos.toPoint(), self.opts.get("tolerance", 32),
                                self.opts.get("contiguous", True))
         if mask is None:
@@ -1287,13 +1367,15 @@ class Canvas(QWidget):
         else:
             colour = (self.win.fg_color if self._button == Qt.MouseButton.LeftButton
                       else self.win.bg_color)
-            p.fillRect(fill.rect(), colour)
+            p.fillRect(fill.rect(), _grayscale_color(colour) if editing_mask else colour)
         p.end()
+        if editing_mask:
+            fill = _grayscale_image(fill)
         fill = alpha_multiply(fill, mask)
-        p = QPainter(layer.image)
+        p = QPainter(target)
         p.setOpacity(self.opts.get("opacity", 100) / 100.0)
         from .model import _QT_MODES
-        if layer.locked_transparency:
+        if layer.locked_transparency and not editing_mask:
             p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceAtop)
         else:
             p.setCompositionMode(_QT_MODES.get(self.opts.get("mode", "Normal"),
@@ -1311,10 +1393,11 @@ class Canvas(QWidget):
         if layer.locked_all or layer.locked_pixels:
             self.status_message.emit("Could not use the tool: the layer is locked.")
             return False
-        self._pre_stroke = layer.image.copy()
+        target = layer.target_image()
+        self._pre_stroke = target.copy()
         self._effect_fn = effect_fn
         self._effect_name = name
-        brushes.apply_effect_dab(layer.image, pos, self.opts.get("brush", {}),
+        brushes.apply_effect_dab(target, pos, self.opts.get("brush", {}),
                                  self.opts.get("strength", 50) / 100.0, effect_fn)
         self.doc.invalidate()
         return True
@@ -1322,7 +1405,7 @@ class Canvas(QWidget):
     def _effect_move(self, pos):
         if self._pre_stroke is None:
             return
-        brushes.apply_effect_dab(self.doc.active.image, pos, self.opts.get("brush", {}),
+        brushes.apply_effect_dab(self.doc.active.target_image(), pos, self.opts.get("brush", {}),
                                  self.opts.get("strength", 50) / 100.0, self._effect_fn)
         self.doc.invalidate()
 
@@ -1376,16 +1459,17 @@ class Canvas(QWidget):
         layer = self.doc.active
         if layer.locked_all or layer.locked_pixels:
             return
-        self._pre_stroke = layer.image.copy()
+        target = layer.target_image()
+        self._pre_stroke = target.copy()
         _, self._smudge_pickup = brushes.smudge_dab(
-            layer.image, pos, pos, self.opts.get("brush", {}),
+            target, pos, pos, self.opts.get("brush", {}),
             self.opts.get("strength", 50) / 100.0, None)
 
     def _move_smudge(self, pos, ev):
         if self._pre_stroke is None:
             return
         _, self._smudge_pickup = brushes.smudge_dab(
-            self.doc.active.image, self._drag_start, pos, self.opts.get("brush", {}),
+            self.doc.active.target_image(), self._drag_start, pos, self.opts.get("brush", {}),
             self.opts.get("strength", 50) / 100.0, self._smudge_pickup)
         self.doc.invalidate()
 
@@ -1450,13 +1534,14 @@ class Canvas(QWidget):
             self.doc.add_layer(layer)
         else:
             layer = self.doc.active
-            p = QPainter(layer.image)
+            editing_mask = layer.editing_mask()
+            p = QPainter(layer.target_image())
             p.setRenderHint(QPainter.RenderHint.Antialiasing, self.opts.get("antialias", True))
             p.setOpacity(self.opts.get("opacity", 100) / 100.0)
             if self.doc.has_selection():
                 p.setClipPath(self.doc.selection.path or QPainterPath())
             p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(self.win.fg_color)
+            p.setBrush(_grayscale_color(self.win.fg_color) if editing_mask else self.win.fg_color)
             p.drawPath(path)
             p.end()
         self.doc.invalidate()
@@ -1615,17 +1700,18 @@ class Canvas(QWidget):
         if layer.locked_all:
             self.status_message.emit("Could not transform: the layer is locked.")
             return
+        target = layer.target_image()
         if self.doc.has_selection():
             rect = QRectF(self.doc.selection.bounds())
-            source = alpha_multiply(layer.image, self.doc.selection.mask)
-            remainder = layer.image.copy()
+            source = alpha_multiply(target, self.doc.selection.mask)
+            remainder = target.copy()
             p = QPainter(remainder)
             p.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOut)
             p.drawImage(0, 0, _grey_to_alpha(self.doc.selection.mask))
             p.end()
         else:
             rect = QRectF(0, 0, self.doc.width, self.doc.height)
-            source = layer.image.copy()
+            source = target.copy()
             remainder = self.doc.blank_image()
         self._transform = {
             "mode": mode, "rect": QRectF(rect), "orig": QRectF(rect),
@@ -1709,26 +1795,10 @@ class Canvas(QWidget):
         if t is None:
             return
         layer = self.doc.active
-        out = self.doc.blank_image()
-        p = QPainter(out)
-        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        p.drawImage(0, 0, t["remainder"])
-        quad = t.get("quad")
-        src = t["source"]
-        if quad:
-            from PyQt6.QtGui import QTransform
-            src_quad = QPolygonF([QPointF(0, 0), QPointF(src.width(), 0),
-                                  QPointF(src.width(), src.height()), QPointF(0, src.height())])
-            dst_quad = QPolygonF(quad)
-            tr = QTransform()
-            if QTransform.quadToQuad(src_quad, dst_quad, tr):
-                p.setTransform(tr)
-                p.drawImage(0, 0, src)
-                p.resetTransform()
-        else:
-            p.drawImage(t["rect"], src)
-        p.end()
-        layer.image = out
+        out = self._transform_compose(t)
+        if layer.editing_mask():
+            out = _grayscale_image(out)
+        layer.set_target_image(out)
         self._transform = None
         self.doc.invalidate()
         self._record("Free Transform")
@@ -1742,26 +1812,27 @@ class Canvas(QWidget):
     def transform_numeric(self, fn):
         """Apply a one-shot transform (Rotate 90, Flip, ...) to the active layer."""
         layer = self.doc.active
+        target = layer.target_image()
         if self.doc.has_selection():
-            floating = alpha_multiply(layer.image, self.doc.selection.mask)
+            floating = alpha_multiply(target, self.doc.selection.mask)
             bounds = self.doc.selection.bounds()
             piece = fn(floating.copy(bounds))
-            out = layer.image.copy()
+            out = target.copy()
             p = QPainter(out)
             p.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOut)
             p.drawImage(0, 0, _grey_to_alpha(self.doc.selection.mask))
             p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
             p.drawImage(bounds.center() - QPoint(piece.width() // 2, piece.height() // 2), piece)
             p.end()
-            layer.image = out
+            layer.set_target_image(out)
         else:
-            transformed = fn(layer.image)
+            transformed = fn(target)
             out = self.doc.blank_image()
             p = QPainter(out)
             p.drawImage((self.doc.width - transformed.width()) // 2,
                         (self.doc.height - transformed.height()) // 2, transformed)
             p.end()
-            layer.image = out
+            layer.set_target_image(out)
         self.doc.invalidate()
         self._record("Transform")
         self.document_changed.emit()
@@ -1811,9 +1882,11 @@ class Canvas(QWidget):
             self.status_message.emit("Could not move: the layer is locked.")
             return
         self._pre_stroke = layer.image.copy()
+        self._pre_mask_stroke = layer.mask.copy() if layer.mask is not None else None
         self._layer_drag_origin = QPointF(0, 0)
         self._move_move(QPointF(dx, dy), None)
         self._pre_stroke = None
+        self._pre_mask_stroke = None
         self._layer_drag_origin = None
         self._record("Move")
         self.document_changed.emit()
@@ -1848,6 +1921,17 @@ def _pixel_at(img: QImage, pos: QPointF):
 def _grey_to_alpha(grey: QImage) -> QImage:
     from .model import mask_to_alpha
     return mask_to_alpha(grey)
+
+
+def _grayscale_color(color: QColor) -> QColor:
+    """A mask is a single greyscale channel -- any colour painted onto it
+    reduces to its luminance, exactly as Photoshop does."""
+    lum = (color.red() * 77 + color.green() * 151 + color.blue() * 28) >> 8
+    return QColor(lum, lum, lum)
+
+
+def _grayscale_image(img: QImage) -> QImage:
+    return ops.desaturate(img)
 
 
 def _intersect_masks(a: QImage, b: QImage) -> QImage:

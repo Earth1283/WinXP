@@ -180,6 +180,10 @@ class PaletteGroup(QFrame):
 
 # ---------------------------------------------------------------- layers ---
 
+THUMB_RECT = QRect(42, 3, 30, 28)
+MASK_RECT = QRect(76, 3, 30, 28)
+
+
 class LayerRow(QWidget):
     """One row: eye, link, thumbnail, mask thumbnail, name, effects marker."""
 
@@ -189,6 +193,9 @@ class LayerRow(QWidget):
         self.index = index
         self.setFixedHeight(34)
         self.setStyleSheet("background: transparent;")
+        self.setAcceptDrops(True)
+        self._drag_candidate = None
+        self._pending_target_layer = None
 
     def layer(self):
         return self.palette.doc().layers[self.index]
@@ -199,6 +206,7 @@ class LayerRow(QWidget):
         active = self.palette.doc().active_index == self.index
         p.fillRect(self.rect(), QColor("#316ac5") if active else QColor("white"))
         text_colour = QColor("white") if active else QColor("black")
+        targeting_mask = active and layer.mask_active and layer.mask is not None
 
         # eye column
         p.setPen(QPen(QColor("#808080"), 1))
@@ -210,7 +218,7 @@ class LayerRow(QWidget):
             _draw_link(p, QRect(24, 12, 11, 10))
 
         # pixel thumbnail
-        thumb_rect = QRect(42, 3, 30, 28)
+        thumb_rect = THUMB_RECT
         p.setBrush(Qt.BrushStyle.NoBrush)   # the eye left a dark brush behind
         p.fillRect(thumb_rect, QColor("#ffffff"))
         thumb = layer.image.scaled(28, 26, Qt.AspectRatioMode.KeepAspectRatio,
@@ -218,10 +226,12 @@ class LayerRow(QWidget):
         p.drawImage(thumb_rect.topLeft() + QPoint(1, 1), thumb)
         p.setPen(QPen(QColor("#606060"), 1))
         p.drawRect(thumb_rect)
+        if active and not targeting_mask:
+            _draw_target_ring(p, thumb_rect)
         x = 76
 
         if layer.mask is not None:
-            mask_rect = QRect(x, 3, 30, 28)
+            mask_rect = MASK_RECT
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.fillRect(mask_rect, QColor("#ffffff"))
             p.drawImage(mask_rect.topLeft() + QPoint(1, 1),
@@ -229,6 +239,16 @@ class LayerRow(QWidget):
                                           Qt.TransformationMode.FastTransformation))
             p.setPen(QPen(QColor("#606060"), 1))
             p.drawRect(mask_rect)
+            if not layer.mask_enabled:
+                pen = QPen(QColor("#e02020"), 2)
+                p.setPen(pen)
+                p.drawLine(mask_rect.topLeft(), mask_rect.bottomRight())
+            if targeting_mask:
+                _draw_target_ring(p, mask_rect)
+            if self.palette.win.doc.viewing_mask and targeting_mask:
+                p.setPen(QPen(QColor("#e02020"), 1))
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.drawRect(mask_rect.adjusted(-2, -2, 2, 2))
             x += 34
 
         p.setPen(text_colour)
@@ -254,21 +274,103 @@ class LayerRow(QWidget):
 
     def mousePressEvent(self, ev):
         x = ev.position().x()
+        win = self.palette.win
+        layer = self.layer()
         if x < 20:
-            self.layer().visible = not self.layer().visible
-            self.palette.win.doc.invalidate()
-            self.palette.win.refresh_all()
+            layer.visible = not layer.visible
+            win.doc.invalidate()
+            win.refresh_all()
             return
-        if 20 <= x < 38 and self.layer().mask is not None:
-            self.layer().mask_linked = not self.layer().mask_linked
+        if 20 <= x < 38 and layer.mask is not None:
+            layer.mask_linked = not layer.mask_linked
             self.update()
             return
+        mods = ev.modifiers()
+        ctrl = bool(mods & Qt.KeyboardModifier.ControlModifier)
+        alt = bool(mods & Qt.KeyboardModifier.AltModifier)
+        shift = bool(mods & Qt.KeyboardModifier.ShiftModifier)
+        if THUMB_RECT.contains(int(x), int(ev.position().y())) and not ctrl and not alt:
+            win.set_mask_target(layer, False)
+            return
+        if layer.mask is not None and MASK_RECT.contains(int(x), int(ev.position().y())):
+            if ctrl:
+                mode = {(False, False): "replace", (True, False): "add",
+                        (False, True): "subtract", (True, True): "intersect"}[(shift, alt)]
+                win.load_mask_as_selection(layer, mode)
+                return
+            if shift:
+                win.toggle_mask_enabled(layer)
+                return
+            if alt:
+                win.toggle_mask_view(layer)
+                return
+            # Plain press: could be a click-to-target or the start of a
+            # drag-to-move. refresh_all() rebuilds every row (destroying this
+            # widget), so defer the target switch to release -- otherwise a
+            # drag never gets the chance to start.
+            self._drag_candidate = ev.position()
+            self._pending_target_layer = layer
+            return
         self.palette.doc().active_index = self.index
-        self.palette.win.refresh_all()
+        win.refresh_all()
+
+    def mouseMoveEvent(self, ev):
+        if (self._drag_candidate is not None and ev.buttons() & Qt.MouseButton.LeftButton
+                and (ev.position() - self._drag_candidate).manhattanLength() > 6):
+            self._pending_target_layer = None
+            self._start_mask_drag()
+
+    def mouseReleaseEvent(self, ev):
+        if self._drag_candidate is not None and self._pending_target_layer is not None:
+            layer = self._pending_target_layer
+            self._drag_candidate = None
+            self._pending_target_layer = None
+            self.palette.win.set_mask_target(layer, True)
+            return
+        self._drag_candidate = None
+        self._pending_target_layer = None
+
+    def _start_mask_drag(self):
+        from PyQt6.QtCore import QMimeData
+        from PyQt6.QtGui import QDrag
+        self._drag_candidate = None
+        drag = QDrag(self)
+        mime = QMimeData()
+        mime.setData("application/x-photochop-mask-layer", str(self.index).encode())
+        drag.setMimeData(mime)
+        drag.exec(Qt.DropAction.MoveAction | Qt.DropAction.CopyAction)
+
+    def dragEnterEvent(self, ev):
+        if ev.mimeData().hasFormat("application/x-photochop-mask-layer"):
+            ev.acceptProposedAction()
+
+    def dragMoveEvent(self, ev):
+        if ev.mimeData().hasFormat("application/x-photochop-mask-layer"):
+            ev.acceptProposedAction()
+
+    def dropEvent(self, ev):
+        data = ev.mimeData().data("application/x-photochop-mask-layer")
+        src_index = int(bytes(data).decode())
+        layers = self.palette.doc().layers
+        if not (0 <= src_index < len(layers)):
+            return
+        copy = bool(ev.keyboardModifiers() & Qt.KeyboardModifier.AltModifier)
+        self.palette.win.move_or_copy_mask(layers[src_index], self.layer(), copy)
+        ev.acceptProposedAction()
 
     def mouseDoubleClickEvent(self, ev):
         if ev.position().x() > 40:
             self.palette.win.layer_properties()
+
+
+def _draw_target_ring(p, rect: QRect):
+    """The double-frame Photoshop draws around whichever thumbnail tools
+    currently paint into."""
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.setPen(QPen(QColor("black"), 1))
+    p.drawRect(rect.adjusted(-2, -2, 1, 1))
+    p.setPen(QPen(QColor("white"), 1))
+    p.drawRect(rect.adjusted(-1, -1, 0, 0))
 
 
 def _draw_eye(p, r: QRect):

@@ -175,6 +175,7 @@ class Layer:
     mask: QImage | None = None     # 8-bit-ish greyscale, white = shows
     mask_linked: bool = True
     mask_enabled: bool = True
+    mask_active: bool = False      # True: tools paint/transform the mask, not the pixels
     locked_transparency: bool = False
     locked_pixels: bool = False
     locked_position: bool = False
@@ -190,7 +191,7 @@ class Layer:
         return Layer(
             self.name, self.image.copy(), self.visible, self.opacity, self.fill_opacity,
             self.blend, self.kind, self.mask.copy() if self.mask else None,
-            self.mask_linked, self.mask_enabled, self.locked_transparency,
+            self.mask_linked, self.mask_enabled, self.mask_active, self.locked_transparency,
             self.locked_pixels, self.locked_position, self.locked_all, self.clipping,
             {k: dict(v) for k, v in self.style.items()},
             dict(self.text) if self.text else None,
@@ -200,6 +201,20 @@ class Layer:
 
     def has_style(self) -> bool:
         return any(v.get("enabled") for v in self.style.values())
+
+    def target_image(self) -> QImage:
+        """Whichever raster tools currently paint/transform: the mask when
+        it's the selected target, otherwise the layer's own pixels."""
+        return self.mask if (self.mask is not None and self.mask_active) else self.image
+
+    def set_target_image(self, img: QImage):
+        if self.mask is not None and self.mask_active:
+            self.mask = img
+        else:
+            self.image = img
+
+    def editing_mask(self) -> bool:
+        return self.mask is not None and self.mask_active
 
     def thumbnail(self, w=32, h=32) -> QImage:
         return self.image.scaled(w, h, Qt.AspectRatioMode.KeepAspectRatio,
@@ -475,6 +490,7 @@ class Document:
         self.guides_h: list[int] = []
         self.guides_v: list[int] = []
         self.quick_mask = False
+        self.viewing_mask = False      # canvas shows the active layer's mask alone
         self.dirty = False
         self._composite_cache: QImage | None = None
         self.history = History(self)

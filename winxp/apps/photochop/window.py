@@ -27,7 +27,9 @@ from ...xp_dialog import XPMessageBox
 from ...color_dialog import XPColorDialog
 from . import adjust_dialogs as adj, brushes, dialogs as dlg, filters as filt
 from . import imageops as ops, pc_icons, tools as tool_defs
-from .canvas import Canvas, CUSTOM_SHAPES, GRADIENT_PRESETS, ZOOM_LEVELS
+from .canvas import (
+    Canvas, CUSTOM_SHAPES, GRADIENT_PRESETS, ZOOM_LEVELS, _grayscale_color, _grayscale_image,
+)
 from .model import BLEND_MODES, Document, Layer, Selection, default_style
 from .palettes import (
     ActionsPalette, BrushesPalette, ChannelsPalette, CharacterPalette, ColorPalette,
@@ -1256,7 +1258,7 @@ class PhotoChopWindow(XPWindow):
             return
         before, after, name = fade
         layer = self.doc.active
-        if layer.image.size() != after.size():
+        if layer.target_image().size() != after.size():
             XPMessageBox.information(
                 self, "PhotoChop",
                 "Could not fade because the layer has changed since then.")
@@ -1264,12 +1266,12 @@ class PhotoChopWindow(XPWindow):
 
         def preview(params):
             if params is None:
-                layer.image = after.copy()
+                layer.set_target_image(after.copy())
             else:
                 from .model import blend_layer
                 out = before.copy()
-                layer.image = blend_layer(out, after, params["mode"],
-                                          params["opacity"] / 100.0)
+                layer.set_target_image(blend_layer(out, after, params["mode"],
+                                                    params["opacity"] / 100.0))
             self.doc.invalidate()
             self.canvas.update()
 
@@ -1277,7 +1279,7 @@ class PhotoChopWindow(XPWindow):
         if d.exec() == QDialog.DialogCode.Accepted:
             self.doc.history.record(f"Fade {name}")
         else:
-            layer.image = after.copy()
+            layer.set_target_image(after.copy())
         self.doc.invalidate()
         self.refresh_all()
 
@@ -1286,13 +1288,13 @@ class PhotoChopWindow(XPWindow):
         self.clear_selection_pixels()
 
     def copy(self):
-        layer = self.doc.active
+        target = self.doc.active.target_image()
         if self.doc.has_selection():
             from .model import alpha_multiply
-            self._clipboard = alpha_multiply(layer.image, self.doc.selection.mask).copy(
+            self._clipboard = alpha_multiply(target, self.doc.selection.mask).copy(
                 self.doc.selection.bounds())
         else:
-            self._clipboard = layer.image.copy()
+            self._clipboard = target.copy()
         self._set_hint("Copied.")
 
     def copy_merged(self):
@@ -1338,15 +1340,25 @@ class PhotoChopWindow(XPWindow):
         if layer.locked_all or layer.locked_pixels:
             self._set_hint("Could not clear: the layer is locked.")
             return
-        p = QPainter(layer.image)
-        if self.doc.has_selection():
-            from .model import mask_to_alpha
-            p.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOut)
-            p.drawImage(0, 0, mask_to_alpha(self.doc.selection.mask))
+        target = layer.target_image()
+        if layer.editing_mask():
+            # A mask has no alpha to clear to -- Photoshop paints the
+            # background colour instead, exactly like erasing one.
+            p = QPainter(target)
+            if self.doc.has_selection():
+                p.setClipPath(self.doc.selection.path or QPainterPath())
+            p.fillRect(target.rect(), _grayscale_color(self.bg_color))
+            p.end()
         else:
-            p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
-            p.fillRect(layer.image.rect(), Qt.GlobalColor.transparent)
-        p.end()
+            p = QPainter(target)
+            if self.doc.has_selection():
+                from .model import mask_to_alpha
+                p.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOut)
+                p.drawImage(0, 0, mask_to_alpha(self.doc.selection.mask))
+            else:
+                p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+                p.fillRect(target.rect(), Qt.GlobalColor.transparent)
+            p.end()
         self.doc.invalidate()
         self.doc.history.record("Clear")
         self.refresh_all()
@@ -1370,21 +1382,26 @@ class PhotoChopWindow(XPWindow):
                   "Black": QColor("black"), "White": QColor("white"),
                   "50% Gray": QColor(128, 128, 128)}.get(spec["use"])
         layer = self.doc.active
+        editing_mask = layer.editing_mask()
+        target = layer.target_image()
         fill = self.doc.blank_image()
         p = QPainter(fill)
         if spec["use"] == "Pattern":
             from .layer_styles import _pattern_tile
             p.drawTiledPixmap(fill.rect(), QPixmap.fromImage(_pattern_tile(spec["pattern"])))
         else:
-            p.fillRect(fill.rect(), colour or self.fg_color)
+            fill_colour = colour or self.fg_color
+            p.fillRect(fill.rect(), _grayscale_color(fill_colour) if editing_mask else fill_colour)
         p.end()
+        if editing_mask and spec["use"] == "Pattern":
+            fill = _grayscale_image(fill)
         if self.doc.has_selection():
             from .model import alpha_multiply
             fill = alpha_multiply(fill, self.doc.selection.mask)
         from .model import _QT_MODES
-        p = QPainter(layer.image)
+        p = QPainter(target)
         p.setOpacity(spec["opacity"] / 100.0)
-        if spec["preserve"] or layer.locked_transparency:
+        if (spec["preserve"] or layer.locked_transparency) and not editing_mask:
             p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceAtop)
         else:
             p.setCompositionMode(_QT_MODES.get(spec["mode"], _QT_MODES["Normal"]))
@@ -1415,13 +1432,15 @@ class PhotoChopWindow(XPWindow):
             half = max(1, width // 2)
             band = ops.combine(ops.maximum(sel.mask, half), ops.minimum(sel.mask, half),
                                lambda a, b: max(0, a - b))
+        layer = self.doc.active
+        editing_mask = layer.editing_mask()
         fill = self.doc.blank_image()
         p = QPainter(fill)
-        p.fillRect(fill.rect(), spec["color"])
+        p.fillRect(fill.rect(), _grayscale_color(spec["color"]) if editing_mask else spec["color"])
         p.end()
         from .model import alpha_multiply
         fill = alpha_multiply(fill, band)
-        p = QPainter(self.doc.active.image)
+        p = QPainter(layer.target_image())
         p.setOpacity(spec["opacity"] / 100.0)
         p.drawImage(0, 0, fill)
         p.end()
@@ -1462,14 +1481,19 @@ class PhotoChopWindow(XPWindow):
 
     # =========================================================== image =====
 
-    def _apply_to_target(self, fn, name):
-        """Run a pixel operation on the active layer, honouring the selection."""
+    def _apply_to_target(self, fn, name, force_image=False):
+        """Run a pixel operation on the active layer, honouring the selection.
+
+        Targets the layer's mask instead of its pixels when the mask is the
+        selected paint target -- filters and adjustments work on a mask's
+        greyscale channel exactly as they do on real pixels.
+        """
         layer = self.doc.active
         if layer.locked_all or layer.locked_pixels:
             XPMessageBox.warning(self, "PhotoChop", "Could not complete the command "
                                                     "because the layer is locked.")
             return
-        source = layer.image
+        source = layer.image if force_image else layer.target_image()
         result = fn(source)
         if result is None:
             return
@@ -1477,7 +1501,10 @@ class PhotoChopWindow(XPWindow):
             result = self.doc.selection.apply(source, result)
         # keep both sides so Edit > Fade can interpolate between them
         self._fade = (source.copy(), result.copy(), name)
-        layer.image = result
+        if force_image:
+            layer.image = result
+        else:
+            layer.set_target_image(result)
         self.doc.invalidate()
         self.doc.history.record(name)
         self.refresh_all()
@@ -1486,15 +1513,15 @@ class PhotoChopWindow(XPWindow):
         """Wire an adjustment dialog's preview to the real layer, restoring the
         original whenever the preview is switched off or the dialog cancelled."""
         layer = self.doc.active
-        backup = layer.image.copy()
+        backup = layer.target_image().copy()
 
         def preview(params):
             if params is None:
-                layer.image = backup.copy()
+                layer.set_target_image(backup.copy())
             else:
                 result = fn(backup, params)
-                layer.image = (self.doc.selection.apply(backup, result)
-                               if self.doc.has_selection() else result)
+                layer.set_target_image(self.doc.selection.apply(backup, result)
+                                       if self.doc.has_selection() else result)
             self.doc.invalidate()
             self.canvas.update()
 
@@ -1505,7 +1532,7 @@ class PhotoChopWindow(XPWindow):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.doc.history.record(name)
         else:
-            layer.image = backup
+            layer.set_target_image(backup)
         self.doc.invalidate()
         self.refresh_all()
 
@@ -1693,9 +1720,9 @@ class PhotoChopWindow(XPWindow):
     def set_mode(self, name):
         self.doc.mode = name
         if name == "Grayscale":
-            self._apply_to_target(ops.desaturate, "Grayscale")
+            self._apply_to_target(ops.desaturate, "Grayscale", force_image=True)
         elif name == "Bitmap":
-            self._apply_to_target(lambda img: ops.threshold(img, 128), "Bitmap")
+            self._apply_to_target(lambda img: ops.threshold(img, 128), "Bitmap", force_image=True)
         elif name in ("CMYK Color", "Lab Color", "Duotone", "Multichannel",
                       "Indexed Color"):
             XPMessageBox.information(
@@ -1898,6 +1925,7 @@ class PhotoChopWindow(XPWindow):
             mask.fill(Qt.GlobalColor.white)
         layer.mask = mask
         layer.mask_enabled = True
+        layer.mask_active = True
         self.doc.invalidate()
         self.doc.history.record("Add Layer Mask")
         self.refresh_all()
@@ -1910,6 +1938,9 @@ class PhotoChopWindow(XPWindow):
             from .model import alpha_multiply
             layer.image = alpha_multiply(layer.image, layer.mask)
         layer.mask = None
+        layer.mask_active = False
+        if self.doc.viewing_mask:
+            self.doc.viewing_mask = False
         self.doc.invalidate()
         self.doc.history.record("Remove Layer Mask")
         self.refresh_all()
@@ -1918,6 +1949,53 @@ class PhotoChopWindow(XPWindow):
         layer = self.doc.active
         layer.mask_enabled = not layer.mask_enabled
         self.doc.invalidate()
+        self.refresh_all()
+
+    def set_mask_target(self, layer, active: bool):
+        """Click a layer row's thumbnail: choose whether tools paint the
+        layer's pixels or its mask."""
+        self.doc.active_index = self.doc.layers.index(layer)
+        layer.mask_active = active and layer.mask is not None
+        if not layer.mask_active:
+            self.doc.viewing_mask = False
+        self.refresh_all()
+
+    def toggle_mask_view(self, layer):
+        """Alt-click a mask thumbnail: show the mask alone on the canvas."""
+        self.doc.active_index = self.doc.layers.index(layer)
+        layer.mask_active = True
+        self.doc.viewing_mask = not self.doc.viewing_mask
+        self.refresh_all()
+
+    def toggle_mask_enabled(self, layer):
+        """Shift-click a mask thumbnail: disable/enable it without selecting it."""
+        if layer.mask is None:
+            return
+        layer.mask_enabled = not layer.mask_enabled
+        self.doc.invalidate()
+        self.refresh_all()
+
+    def load_mask_as_selection(self, layer, mode="replace"):
+        """Ctrl-click a mask thumbnail: the mask's white areas become the
+        selection (Ctrl+Shift adds, Ctrl+Alt subtracts, both intersects)."""
+        if layer.mask is None:
+            return
+        sel = self.doc.ensure_selection()
+        sel.set_mask(layer.mask.copy(), mode)
+        self.doc.history.record("Load Mask as Selection")
+        self.refresh_all()
+
+    def move_or_copy_mask(self, src_layer, dst_layer, copy: bool):
+        """Drag a mask thumbnail onto another layer's row."""
+        if src_layer is dst_layer or src_layer.mask is None:
+            return
+        dst_layer.mask = src_layer.mask.copy()
+        dst_layer.mask_enabled = True
+        if not copy:
+            src_layer.mask = None
+            src_layer.mask_active = False
+        self.doc.invalidate()
+        self.doc.history.record("Copy Layer Mask" if copy else "Move Layer Mask")
         self.refresh_all()
 
     def group_with_previous(self):
@@ -2135,10 +2213,12 @@ class PhotoChopWindow(XPWindow):
         path = self._current_path()
         if path is None:
             return
-        p = QPainter(self.doc.active.image)
+        layer = self.doc.active
+        editing_mask = layer.editing_mask()
+        p = QPainter(layer.target_image())
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(self.fg_color)
+        p.setBrush(_grayscale_color(self.fg_color) if editing_mask else self.fg_color)
         p.drawPath(path)
         p.end()
         self.doc.invalidate()
@@ -2149,10 +2229,13 @@ class PhotoChopWindow(XPWindow):
         path = self._current_path()
         if path is None:
             return
+        layer = self.doc.active
+        editing_mask = layer.editing_mask()
         brush = self.options.get("brush", {})
-        p = QPainter(self.doc.active.image)
+        pen_colour = _grayscale_color(self.fg_color) if editing_mask else self.fg_color
+        p = QPainter(layer.target_image())
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.setPen(QPen(self.fg_color, max(1, brush.get("size", 13) // 3),
+        p.setPen(QPen(pen_colour, max(1, brush.get("size", 13) // 3),
                       Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawPath(path)
