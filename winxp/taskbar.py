@@ -15,7 +15,7 @@ class StartButton(QPushButton):
         super().__init__(parent)
         self.setFixedSize(94, 30)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setIcon(icons.icon("shutdown", 20))
+        self._flag = icons.icon("xp_flag", 20).pixmap(20, 20)
 
     def paintEvent(self, ev):
         p = QPainter(self)
@@ -34,7 +34,7 @@ class StartButton(QPushButton):
             )
             p.setPen(c)
             p.drawLine(r.left(), r.top() + y, r.right(), r.top() + y)
-        p.setPen(Qt.PenStyle.NoPen)
+        p.drawPixmap(6, (r.height() - 20) // 2 + r.top(), self._flag)
         f = p.font()
         f.setBold(True)
         f.setItalic(True)

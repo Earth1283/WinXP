@@ -134,6 +134,10 @@ def _draw(name: str, size: int) -> QPixmap:
         _draw_tool_text(p, s)
     elif name == "tool_select":
         _draw_tool_select(p, s)
+    elif name == "allprograms":
+        _draw_allprograms(p, s)
+    elif name == "xp_flag":
+        _draw_xp_flag(p, s)
     elif name in _SHELL_DRAWERS:
         _SHELL_DRAWERS[name](p, s)
     else:
@@ -921,6 +925,37 @@ def _draw_nav_up(p, s):
     _mini_folder(p, s, QRectF(s * 0.06, s * 0.56, s * 0.88, s * 0.36))
     _fat_arrow(p, s, QRectF(s * 0.22, s * 0.02, s * 0.56, s * 0.50), "up",
                "#a6ea7d", "#2f8f16", "#1d5a0c")
+
+
+def _draw_allprograms(p, s):
+    """Two overlapping fat green chevrons -- the Start Menu's All Programs glyph."""
+    _fat_arrow(p, s, QRectF(s * 0.02, s * 0.24, s * 0.50, s * 0.52), "right",
+               "#c9f7a8", "#3fa129", "#1a6e0a")
+    _fat_arrow(p, s, QRectF(s * 0.32, s * 0.24, s * 0.50, s * 0.52), "right",
+               "#c9f7a8", "#3fa129", "#1a6e0a")
+
+
+def _draw_xp_flag(p, s):
+    """Simplified four-pane waving-flag mark used on the Start button."""
+    cx, cy = s * 0.52, s * 0.50
+    panes = [
+        ("#f6552b", QPointF(cx - s * 0.46, cy - s * 0.46), QPointF(cx - s * 0.04, cy - s * 0.34)),
+        ("#7cb92e", QPointF(cx + s * 0.02, cy - s * 0.40), QPointF(cx + s * 0.46, cy - s * 0.28)),
+        ("#1f8ee8", QPointF(cx - s * 0.46, cy - s * 0.24), QPointF(cx - s * 0.04, cy + s * 0.24)),
+        ("#ffc20e", QPointF(cx + s * 0.02, cy - s * 0.18), QPointF(cx + s * 0.46, cy + s * 0.30)),
+    ]
+    p.setPen(Qt.PenStyle.NoPen)
+    for color, top_left, bottom_right in panes:
+        rect = QRectF(top_left, bottom_right)
+        skew = rect.height() * 0.16
+        poly = QPolygonF([
+            QPointF(rect.left() + skew * 0.4, rect.top()),
+            QPointF(rect.right(), rect.top() + skew * 0.2),
+            QPointF(rect.right() - skew * 0.4, rect.bottom()),
+            QPointF(rect.left(), rect.bottom() - skew * 0.2),
+        ])
+        p.setBrush(_grad(rect, QColor(color).lighter(122).name(), color, vertical=False))
+        p.drawPolygon(poly)
 
 
 def _draw_shell_search(p, s):

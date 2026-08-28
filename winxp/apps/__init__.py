@@ -17,15 +17,17 @@ def launch(wm, target: str):
         if guard_fs(wm):
             return None
         ref = target[len("explorer:"):]
-        node_id = {"root": vfs.root_id, "mydocs": vfs.my_docs_id, "recycle": vfs.recycle_id}.get(ref, ref)
+        search = ref == "search"
+        node_id = vfs.root_id if search else \
+            {"root": vfs.root_id, "mydocs": vfs.my_docs_id, "recycle": vfs.recycle_id}.get(ref, ref)
         if vfs.get(node_id) is None:
             # Cursed: the folder being opened (e.g. Recycle Bin) got deleted out
             # from under us. Don't crash the whole process -- crash the "OS" instead.
             from .bsod import crash
             crash(wm, "explorer.exe")
             return None
-        from .explorer import ExplorerWindow
-        window = ExplorerWindow(wm, node_id)
+        from .explorer import BAR_SEARCH, ExplorerWindow
+        window = ExplorerWindow(wm, node_id, explorer_bar=BAR_SEARCH if search else None)
         window._app_key = "explorer"
         wm.open(window)
         return window
