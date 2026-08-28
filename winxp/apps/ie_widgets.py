@@ -136,7 +136,7 @@ class ExplorerBar(QWidget):
     def favorite_rows():
         return [
             ("Links", ""), ("MSN.com", HOME_URL),
-            ("MacroHard Corporation", "http://www.macrohard.com/"),
+            ("Microsoft Corporation", "http://www.microsoft.com/"),
             ("Windows Update", "http://xphome.local/changelog.html"),
             ("Steve's XP Fan Page!!!", "http://www.geocities.local/xp_fan_page/"),
         ]

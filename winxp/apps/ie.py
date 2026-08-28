@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from html import escape
+from pathlib import Path
 from urllib.parse import parse_qs, quote_plus, urlparse
 
 from PyQt6.QtCore import QSize, Qt, QUrl
@@ -186,7 +187,7 @@ class IEWindow(XPWindow):
         self.add_action(menu, "&Organize Favorites...")
         menu.addSeparator()
         self.add_action(menu, "MSN.com", lambda: self.navigate(HOME_URL))
-        self.add_action(menu, "MacroHard Corporation", lambda: self.navigate("http://www.macrohard.com/"))
+        self.add_action(menu, "Microsoft Corporation", lambda: self.navigate("http://www.microsoft.com/"))
         self.add_action(menu, "Steve's XP Fan Page!!!", lambda: self.navigate("http://www.geocities.local/xp_fan_page/"))
 
         menu = bar.addMenu("&Tools")
@@ -298,7 +299,7 @@ class IEWindow(XPWindow):
         row.addWidget(label)
         links = [
             ("Customize Links", "http://xphome.local/"), ("Free Hotmail", HOME_URL),
-            ("Windows", "http://xphome.local/"), ("Windows Media", "http://www.macrohard.com/"),
+            ("Windows", "http://xphome.local/"), ("Windows Media", "http://www.microsoft.com/"),
             ("Steve's XP Page!!!", "http://www.geocities.local/xp_fan_page/"),
         ]
         for text, url in links:
@@ -494,6 +495,10 @@ class IEWindow(XPWindow):
 
     def _load_image(self, name):
         url = name.toString()
+        if url.startswith("ieasset:///"):
+            filename = url.removeprefix("ieasset:///")
+            asset_path = Path(__file__).parents[1] / "assets" / filename
+            return QImage(str(asset_path)) if asset_path.is_file() else QImage()
         if not url.startswith(("http://", "https://")):
             url = QUrl(self.address.text()).resolved(name).toString()
         if url in self.image_cache:

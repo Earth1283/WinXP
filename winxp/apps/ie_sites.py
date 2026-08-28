@@ -18,7 +18,7 @@ PAGES = {
     "http://www.example.com/": ("Example Web Site", "example.html"),
     "http://www.apple.com/": ("Apple", "apple.html"),
     "http://www.wikipedia.org/": ("Wikipedia, the free encyclopedia", "wikipedia.html"),
-    "http://www.macrohard.com/": ("MacroHard Corporation", "macrohard.html"),
+    "http://www.microsoft.com/": ("Microsoft.com Home Page", "microsoft.html"),
     "http://www.geocities.local/xp_fan_page/": ("Steve's Windows XP Fan Page", "geocities.html"),
     "about:blank": ("about:blank", "blank.html"),
 }
