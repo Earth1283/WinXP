@@ -16,8 +16,8 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-    QMenu, QMenuBar, QPushButton, QSizePolicy, QSpinBox, QToolButton, QVBoxLayout,
-    QWidget,
+    QMenu, QMenuBar, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QToolButton,
+    QVBoxLayout, QWidget,
 )
 
 from ... import image_codec, theme, vfs as vfs_mod
@@ -58,6 +58,21 @@ QComboBox, QSpinBox, QDoubleSpinBox, QLineEdit { font-size: 11px; }
 """
 
 _activated_this_session = False
+
+
+class PaletteScrollArea(QScrollArea):
+    """A narrow palette viewport with conventional Shift+wheel scrolling."""
+
+    def wheelEvent(self, ev):
+        delta = ev.angleDelta().x()
+        if not delta and ev.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            delta = ev.angleDelta().y()
+        if delta:
+            bar = self.horizontalScrollBar()
+            bar.setValue(bar.value() - delta)
+            ev.accept()
+            return
+        super().wheelEvent(ev)
 
 
 class ToolButton(QToolButton):
@@ -349,8 +364,17 @@ class PhotoChopWindow(XPWindow):
                             checkable=True, checked=(name == "RGB Color"))
             self._mode_group.addAction(act)
         mode.addSeparator()
-        self._act(mode, "8 Bits/Channel", checkable=True, checked=True)
-        self._act(mode, "16 Bits/Channel", checkable=True)
+        self._bit_depth_group = QActionGroup(self)
+        self._bit_depth_group.setExclusive(True)
+        self._bit_depth_actions = {}
+        for depth in (8, 16):
+            act = self._act(
+                mode, f"{depth} Bits/Channel",
+                lambda _=None, value=depth: self.set_bit_depth(value),
+                checkable=True, checked=(depth == self.doc.bits_per_channel),
+            )
+            self._bit_depth_group.addAction(act)
+            self._bit_depth_actions[depth] = act
         mode.addSeparator()
         self._act(mode, "Color Table...")
         self._act(mode, "Assign Profile...")
@@ -528,16 +552,19 @@ class PhotoChopWindow(XPWindow):
         self._act(m, "Show &Extras", self.toggle_extras, "Ctrl+H", checkable=True,
                   checked=True)
         show = m.addMenu("&Show")
-        self._act(show, "Selection Edges", self.toggle_extras, checkable=True, checked=True)
+        self._act(show, "Selection Edges", self.toggle_selection_edges,
+                  checkable=True, checked=True)
         self._act(show, "Grid", self.toggle_grid, "Ctrl+'", checkable=True)
         self._act(show, "Guides", self.toggle_guides, "Ctrl+;", checkable=True, checked=True)
-        self._act(show, "Slices", checkable=True)
-        self._act(show, "Annotations", checkable=True, checked=True)
+        self._act(show, "Slices", self.toggle_slices, checkable=True, checked=True)
+        self._act(show, "Annotations", self.toggle_annotations,
+                  checkable=True, checked=True)
         m.addSeparator()
         self._act(m, "&Rulers", self.toggle_rulers, "Ctrl+R", checkable=True, checked=True)
         m.addSeparator()
-        self._act(m, "&Snap", None, "Ctrl+Shift+;", checkable=True, checked=True)
-        self._act(m, "Lock Guides", None, "Ctrl+Alt+;", checkable=True)
+        self._act(m, "&Snap", self.toggle_snap, "Ctrl+Shift+;",
+                  checkable=True, checked=True)
+        self._act(m, "Lock Guides", self.toggle_guide_lock, "Ctrl+Alt+;", checkable=True)
         self._act(m, "Clear Guides", self.clear_guides)
         self._act(m, "New Guide...", self.new_guide)
 
@@ -695,7 +722,6 @@ class PhotoChopWindow(XPWindow):
 
     def _build_palette_dock(self):
         dock = QWidget()
-        dock.setFixedWidth(226)
         dock.setStyleSheet(f"background: {theme.XP_WINDOW_BG}; "
                            f"border-left: 1px solid #9a9a8a;")
         layout = QVBoxLayout(dock)
@@ -731,7 +757,37 @@ class PhotoChopWindow(XPWindow):
             layout.addWidget(group, stretch)
         self.groups[0].setFixedHeight(128)
         self.groups[1].setFixedHeight(130)
-        return dock
+        dock.setMinimumWidth(max(group.sizeHint().width() for group in self.groups) + 6)
+
+        scroll = PaletteScrollArea()
+        scroll.setObjectName("paletteScroll")
+        scroll.setFixedWidth(226)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(dock)
+        bar = scroll.horizontalScrollBar()
+        bar.setFixedHeight(9)
+        bar.setSingleStep(24)
+        bar.setStyleSheet("""
+            QScrollBar:horizontal {
+                height: 9px; margin: 0; border: 1px solid #9a9a8a;
+                background: #d4d0c8;
+            }
+            QScrollBar::handle:horizontal {
+                min-width: 18px; background: #ece9d8;
+                border: 1px solid #808080;
+            }
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+                width: 0; border: none; background: none;
+            }
+            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+                background: #d4d0c8;
+            }
+        """)
+        self.palette_scroll = scroll
+        return scroll
 
     def _build_status_bar(self):
         bar = QWidget()
@@ -968,6 +1024,8 @@ class PhotoChopWindow(XPWindow):
 
     def refresh_all(self):
         self.doc.invalidate()
+        for depth, action in self._bit_depth_actions.items():
+            action.setChecked(depth == self.doc.bits_per_channel)
         self.canvas.update()
         self.layers.refresh()
         self.channels.refresh()
@@ -1717,6 +1775,11 @@ class PhotoChopWindow(XPWindow):
         from .misc_dialogs import HistogramDialog
         HistogramDialog(self, self.doc.flattened()).exec()
 
+    def set_bit_depth(self, depth):
+        self.doc.bits_per_channel = depth
+        self._set_hint(f"{depth} bits per channel")
+        self._sync_title()
+
     def set_mode(self, name):
         self.doc.mode = name
         if name == "Grayscale":
@@ -2275,6 +2338,7 @@ class PhotoChopWindow(XPWindow):
             self.refresh_all()
 
     def record_action(self):
+        self.actions_palette.recording = True
         XPMessageBox.information(
             self, "PhotoChop",
             "Recording has started. Every step you take is being recorded and "
@@ -2379,15 +2443,42 @@ class PhotoChopWindow(XPWindow):
     def canvas_zoom_out(self):
         self.canvas.zoom_out()
 
-    def toggle_extras(self):
+    def toggle_extras(self, checked=None):
+        self.canvas.show_extras = (not self.canvas.show_extras
+                                   if checked is None else bool(checked))
         self.canvas.update()
 
-    def toggle_grid(self):
-        self.canvas.show_grid = not self.canvas.show_grid
+    def toggle_selection_edges(self, checked=None):
+        self.canvas.show_selection_edges = (
+            not self.canvas.show_selection_edges if checked is None else bool(checked))
         self.canvas.update()
 
-    def toggle_guides(self):
-        self.canvas.show_guides = not self.canvas.show_guides
+    def toggle_grid(self, checked=None):
+        self.canvas.show_grid = (not self.canvas.show_grid
+                                 if checked is None else bool(checked))
+        self.canvas.update()
+
+    def toggle_guides(self, checked=None):
+        self.canvas.show_guides = (not self.canvas.show_guides
+                                   if checked is None else bool(checked))
+        self.canvas.update()
+
+    def toggle_slices(self, checked=None):
+        self.canvas.show_slices = (not self.canvas.show_slices
+                                   if checked is None else bool(checked))
+        self.canvas.update()
+
+    def toggle_annotations(self, checked=None):
+        self.canvas.show_annotations = (
+            not self.canvas.show_annotations if checked is None else bool(checked))
+        self.canvas.update()
+
+    def toggle_snap(self, checked=None):
+        self.canvas.snap = not self.canvas.snap if checked is None else bool(checked)
+
+    def toggle_guide_lock(self, checked=None):
+        self.canvas.guides_locked = (
+            not self.canvas.guides_locked if checked is None else bool(checked))
         self.canvas.update()
 
     def toggle_rulers(self):
@@ -2404,10 +2495,12 @@ class PhotoChopWindow(XPWindow):
     def new_guide(self):
         value = dlg.ValueDialog.get(self, "New Guide", "Position:", 100, 0, 8000, " pixels")
         if value is not None:
-            self.doc.guides_h.append(value)
-            self.canvas.update()
+            self.add_guide(True, value)
 
     def add_guide(self, horizontal, position):
+        if self.canvas.guides_locked:
+            self._set_hint("Could not create guide: guides are locked.")
+            return
         (self.doc.guides_h if horizontal else self.doc.guides_v).append(int(position))
         self.canvas.update()
 

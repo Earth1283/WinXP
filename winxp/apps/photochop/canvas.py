@@ -65,9 +65,14 @@ class Canvas(QWidget):
         self.zoom = 1.0
         self.pan = QPointF(0, 0)          # image-space point pinned to view centre
         self.show_rulers = True
+        self.show_extras = True
+        self.show_selection_edges = True
         self.show_grid = False
         self.show_guides = True
+        self.show_slices = True
+        self.show_annotations = True
         self.snap = True
+        self.guides_locked = False
 
         self._ants_offset = 0
         self._ants = QTimer(self)
@@ -214,11 +219,12 @@ class Canvas(QWidget):
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawRect(r.adjusted(-0.5, -0.5, 0.5, 0.5))
 
-        if self.show_grid:
+        if self.show_extras and self.show_grid:
             self._paint_grid(p, r)
-        if self.show_guides:
+        if self.show_extras and self.show_guides:
             self._paint_guides(p, r)
-        if self.doc.has_selection() and not self.doc.quick_mask:
+        if (self.show_extras and self.show_selection_edges
+                and self.doc.has_selection() and not self.doc.quick_mask):
             self._paint_ants(p, self.doc.selection.path)
         self._paint_tool_overlay(p, r)
         p.end()
@@ -410,20 +416,22 @@ class Canvas(QWidget):
             p.setPen(QPen(QColor("black"), 1))
             p.drawLine(QPointF(v.x() - 5, v.y()), QPointF(v.x() + 5, v.y()))
             p.drawLine(QPointF(v.x(), v.y() - 5), QPointF(v.x(), v.y() + 5))
-        for note in self._notes:
-            v = self.view_pos(note["pos"])
-            p.setPen(QPen(QColor("#8a7a20"), 1))
-            p.setBrush(QColor(note.get("color", "#f5e04a")))
-            p.drawRect(QRectF(v.x(), v.y() - 12, 14, 12))
-            p.setPen(QPen(QColor("#8a7a20"), 1))
-            for i in range(3):
-                p.drawLine(QPointF(v.x() + 2, v.y() - 9 + i * 3),
-                           QPointF(v.x() + 12, v.y() - 9 + i * 3))
-        for sl in self._slices:
-            v = QRectF(self.view_pos(sl.topLeft()), self.view_pos(sl.bottomRight()))
-            p.setPen(QPen(QColor("#3a6ea5"), 1, Qt.PenStyle.DashLine))
-            p.setBrush(Qt.BrushStyle.NoBrush)
-            p.drawRect(v)
+        if self.show_extras and self.show_annotations:
+            for note in self._notes:
+                v = self.view_pos(note["pos"])
+                p.setPen(QPen(QColor("#8a7a20"), 1))
+                p.setBrush(QColor(note.get("color", "#f5e04a")))
+                p.drawRect(QRectF(v.x(), v.y() - 12, 14, 12))
+                p.setPen(QPen(QColor("#8a7a20"), 1))
+                for i in range(3):
+                    p.drawLine(QPointF(v.x() + 2, v.y() - 9 + i * 3),
+                               QPointF(v.x() + 12, v.y() - 9 + i * 3))
+        if self.show_extras and self.show_slices:
+            for sl in self._slices:
+                v = QRectF(self.view_pos(sl.topLeft()), self.view_pos(sl.bottomRight()))
+                p.setPen(QPen(QColor("#3a6ea5"), 1, Qt.PenStyle.DashLine))
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.drawRect(v)
         if self._clone_src is not None and self.tool() in ("clone_stamp", "healing"):
             v = self.view_pos(self._clone_src)
             p.setPen(QPen(QColor("black"), 1))
@@ -544,6 +552,28 @@ class Canvas(QWidget):
 
     # -- mouse ---------------------------------------------------------
 
+    def _snap_document_point(self, pos: QPointF) -> QPointF:
+        """Snap geometry-tool coordinates to nearby guides in screen space."""
+        geometry_tools = {
+            "marquee_rect", "marquee_ellipse", "marquee_row", "marquee_col",
+            "crop", "slice", "gradient", "measure",
+            "shape_rect", "shape_round", "shape_ellipse", "shape_poly",
+            "shape_line", "shape_custom",
+        }
+        if not self.snap or self.tool() not in geometry_tools:
+            return QPointF(pos)
+        tolerance = 6.0 / max(0.05, self.zoom)
+        x, y = pos.x(), pos.y()
+        if self.doc.guides_v:
+            guide = min(self.doc.guides_v, key=lambda value: abs(value - x))
+            if abs(guide - x) <= tolerance:
+                x = float(guide)
+        if self.doc.guides_h:
+            guide = min(self.doc.guides_h, key=lambda value: abs(value - y))
+            if abs(guide - y) <= tolerance:
+                y = float(guide)
+        return QPointF(x, y)
+
     def _normalised_drag(self) -> QRectF | None:
         if self._drag_start is None or self._drag_now is None:
             return None
@@ -563,7 +593,7 @@ class Canvas(QWidget):
 
     def mousePressEvent(self, ev):
         self.setFocus()
-        pos = self.doc_pos(ev.position())
+        pos = self._snap_document_point(self.doc_pos(ev.position()))
         self._button = ev.button()
         self._shift = bool(ev.modifiers() & Qt.KeyboardModifier.ShiftModifier)
         self._alt = bool(ev.modifiers() & Qt.KeyboardModifier.AltModifier)
@@ -586,7 +616,7 @@ class Canvas(QWidget):
         self.update()
 
     def mouseMoveEvent(self, ev):
-        pos = self.doc_pos(ev.position())
+        pos = self._snap_document_point(self.doc_pos(ev.position()))
         self._drag_now = pos
         self._shift = bool(ev.modifiers() & Qt.KeyboardModifier.ShiftModifier)
         self.position_changed.emit(
@@ -613,7 +643,7 @@ class Canvas(QWidget):
             self.update()
 
     def mouseReleaseEvent(self, ev):
-        pos = self.doc_pos(ev.position())
+        pos = self._snap_document_point(self.doc_pos(ev.position()))
         if self._pan_anchor is not None:
             self._pan_anchor = None
             self._dragging = False

@@ -695,6 +695,7 @@ class ActionsPalette(QWidget):
     def __init__(self, win):
         super().__init__()
         self.win = win
+        self.recording = False
         root = QVBoxLayout(self)
         root.setContentsMargins(5, 5, 5, 4)
         root.setSpacing(4)
@@ -713,12 +714,12 @@ class ActionsPalette(QWidget):
         buttons = QHBoxLayout()
         buttons.setSpacing(2)
         for text, tip, slot in (
-                ("[]", "Stop playing/recording", None),
+                ("[]", "Stop playing/recording", self.stop_recording),
                 ("O", "Begin recording", win.record_action),
                 (">", "Play selection", win.play_action),
-                ("[+]", "Create new set", None),
+                ("[+]", "Create new set", self.new_set),
                 ("+", "Create new action", win.record_action),
-                ("X", "Delete", None)):
+                ("X", "Delete", self.delete_selected)):
             buttons.addWidget(_mini_button(text, tip, slot))
         buttons.addStretch(1)
         root.addLayout(buttons)
@@ -729,6 +730,33 @@ class ActionsPalette(QWidget):
     def current_action(self):
         item = self.tree.currentItem()
         return item.text(0).split("   ")[0] if item and item.parent() else None
+
+    def stop_recording(self):
+        self.recording = False
+        self.win._set_hint("Action recording stopped.")
+
+    def new_set(self):
+        existing = {
+            self.tree.topLevelItem(i).text(0)
+            for i in range(self.tree.topLevelItemCount())
+        }
+        number = 1
+        while f"Untitled Set {number}" in existing:
+            number += 1
+        item = QTreeWidgetItem([f"Untitled Set {number}"])
+        self.tree.addTopLevelItem(item)
+        self.tree.setCurrentItem(item)
+
+    def delete_selected(self):
+        item = self.tree.currentItem()
+        if item is None:
+            self.win._set_hint("Select an action or set to delete.")
+            return
+        parent = item.parent()
+        if parent is None:
+            self.tree.takeTopLevelItem(self.tree.indexOfTopLevelItem(item))
+        else:
+            parent.takeChild(parent.indexOfChild(item))
 
 
 # ------------------------------------------------------------- navigator ---
