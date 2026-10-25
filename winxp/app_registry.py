@@ -44,6 +44,8 @@ APPS = [
             pinned=True, takes_node_id=True),
     AppSpec("mword", "MacroHard Office Word 2003", "mword", "mword", "MWordWindow",
             pinned=True, exe_name="winword.exe", takes_node_id=True),
+    AppSpec("excell", "MacroHard Office Ex-Cell 2003", "excell", "excell", "ExCellWindow",
+            pinned=True, exe_name="excel.exe", takes_node_id=True),
     AppSpec("calculator", "Calculator", "calculator", "calculator", "CalculatorWindow",
             pinned=True, exe_name="calc.exe"),
     AppSpec("paint", "Paint", "paint", "paint", "PaintWindow",

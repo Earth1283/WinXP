@@ -155,6 +155,7 @@ CATALOGUE = [
                       note="Minesweeper."),
             Component("wmp", "Windows Media Player 8", 28, apps=["wmp"]),
             Component("mword", "MacroHard Office Word 2003", 248, apps=["mword"]),
+            Component("excell", "MacroHard Office Ex-Cell 2003", 196, apps=["excell"]),
             Component("vscode", "Visual XP Code", 88, default=False, apps=["vscode"]),
         ]),
     Component(

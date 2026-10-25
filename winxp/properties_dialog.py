@@ -103,7 +103,12 @@ class PropertiesDialog(QDialog):
 
         header = QHBoxLayout()
         icon_label = QLabel()
-        icon_key = "folder" if node.kind == vfs_mod.FOLDER else ICON_KEYS.get(node.kind, "text_file")
+        if node.kind == vfs_mod.FOLDER:
+            icon_key = "folder"
+        elif vfs_mod.is_workbook(node):
+            icon_key = "excell"
+        else:
+            icon_key = ICON_KEYS.get(node.kind, "text_file")
         icon_label.setPixmap(icons.icon(icon_key, 32).pixmap(32, 32))
         header.addWidget(icon_label)
         self.name_edit = QLineEdit(node.name)

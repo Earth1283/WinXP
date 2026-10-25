@@ -61,6 +61,10 @@ DRIVE_TYPE_LABELS = {
 CONTENT_EXT = {TEXT: ".txt", RICH: ".html", IMAGE: ".png"}
 EXTENSIONED_KINDS = (TEXT, RICH, IMAGE, AUDIO, VIDEO)
 
+
+def is_workbook(node) -> bool:
+    return bool(node) and node.kind == TEXT and node.name.lower().endswith(".xls")
+
 # Fake C:\WINDOWS\system32 -- real, read-only nodes. Read-only blocks delete
 # in desktop.py/explorer.py until Properties clears the attribute; if the
 # name matches corruption.SYSTEM32_STOP_MAP, deleting it for real BSODs

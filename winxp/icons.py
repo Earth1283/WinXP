@@ -60,6 +60,8 @@ def _draw(name: str, size: int) -> QPixmap:
         _draw_textfile(p, s, notepad=False, blue=True)
     elif name == "mword":
         _draw_mword(p, s)
+    elif name == "excell":
+        _draw_mword(p, s, letter="X", spine=("#3f9b4f", "#1e6b2e"))
     elif name == "ie":
         _draw_ie(p, s)
     elif name == "minesweeper":
@@ -229,7 +231,7 @@ def _draw_textfile(p, s, notepad=False, blue=False):
         p.drawLine(QPoint(int(r.left() + 5), int(y)), QPoint(int(r.right() - 5), int(y)))
 
 
-def _draw_mword(p, s):
+def _draw_mword(p, s, letter="W", spine=("#4a7fc1", "#22508f")):
     """Word 2003's icon: a white sheet with the blue W and the blue spine."""
     page = QRectF(s * 0.16, s * 0.06, s * 0.70, s * 0.88)
     fold = s * 0.22
@@ -258,7 +260,7 @@ def _draw_mword(p, s):
 
     # the blue spine and the W
     p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(_grad(QRectF(0, 0, 1, s), "#4a7fc1", "#22508f"))
+    p.setBrush(_grad(QRectF(0, 0, 1, s), spine[0], spine[1]))
     p.drawRect(QRectF(s * 0.04, s * 0.16, s * 0.30, s * 0.68))
     f = p.font()
     f.setBold(True)
@@ -266,7 +268,7 @@ def _draw_mword(p, s):
     p.setFont(f)
     p.setPen(QColor("white"))
     p.drawText(QRectF(s * 0.04, s * 0.16, s * 0.30, s * 0.68),
-               Qt.AlignmentFlag.AlignCenter, "W")
+               Qt.AlignmentFlag.AlignCenter, letter)
 
 
 def _draw_photochop(p, s):

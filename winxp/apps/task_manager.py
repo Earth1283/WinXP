@@ -233,9 +233,10 @@ class TaskManagerWindow(XPWindow):
             key = getattr(window, "_app_key", None)
             spec = BY_ID.get(key)
             exe = spec.exe() if spec else ("explorer.exe" if key == "explorer" else "app.exe")
+            load = getattr(window, "cpu_load", 0)
             self._proc_rows.append({
                 "name": exe, "pid": str(2000 + id(window) % 1000),
-                "cpu": f"{random.randint(0, 3):02d}",
+                "cpu": f"{min(99, load) if load > 0 else random.randint(0, 3):02d}",
                 "mem": f"{random.randint(2000, 18000):,} K", "window": window,
             })
         self.proc_table.setRowCount(len(self._proc_rows))
@@ -362,6 +363,8 @@ class TaskManagerWindow(XPWindow):
     def _tick(self):
         self._cpu_hist += random.randint(-6, 6)
         self._cpu_hist = max(3, min(95, self._cpu_hist))
+        peak = max((getattr(w, "cpu_load", 0) for w in self.wm.windows), default=0)
+        self._cpu_hist = max(self._cpu_hist, min(99, peak))
         if hasattr(self, "cpu_graph"):
             self.cpu_graph.push(self._cpu_hist)
             self.mem_graph.push(max(5, min(90, self._cpu_hist + random.randint(-10, 10))))

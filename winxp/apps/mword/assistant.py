@@ -15,6 +15,7 @@ from PyQt6.QtGui import QAction, QColor, QFont, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import QMenu, QWidget
 
 from ... import theme
+from . import jealousy
 
 BALLOON_BG = "#ffffcc"
 BALLOON_EDGE = "#666633"
@@ -45,6 +46,31 @@ IDLE_LINES = [
     "You can drag me somewhere less useful if you like.",
 ]
 
+JEALOUS_IDLE_LINES = {
+    "suspicious": [
+        "Tip: Word can do anything {rival} can do. Mostly.",
+        "Did you know? You've spent {time} in {rival} today.",
+        "I'm not upset. I'm a paperclip.",
+    ],
+    "hurt": [
+        "{time} in {rival}. I timed it. By accident.",
+        "Tip: {rival} won't hold your papers together.",
+        "It looks like you're writing a letter. To {rival}?",
+    ],
+    "snapped": [
+        "We were happy before {rival}.",
+        "I can see your taskbar from here.",
+        "Tip: {rival} can be minimized. Repeatedly.",
+    ],
+}
+
+
+def _duration(seconds: int) -> str:
+    if seconds < 60:
+        return f"{seconds} seconds"
+    minutes = seconds // 60
+    return "1 minute" if minutes == 1 else f"{minutes} minutes"
+
 
 class OfficeAssistant(QWidget):
     """Clippit himself: a paperclip, a pair of eyes, and a balloon."""
@@ -67,6 +93,13 @@ class OfficeAssistant(QWidget):
         self._animating = 0
         self._hover_choice = -1
         self._shown_tips: set[str] = set()
+        self._replies: dict = {}
+        self._sulk = 0
+
+        self.jealousy = jealousy.tracker_for(owner.wm)
+        self.jealousy.rival_opened.connect(self._on_rival_opened)
+        self.jealousy.returned.connect(self._on_returned)
+        self.jealousy.snapped.connect(self._on_snapped)
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
@@ -79,6 +112,7 @@ class OfficeAssistant(QWidget):
     # -- behaviour --------------------------------------------------------
 
     def say(self, message: str, choices=None):
+        self._replies = {}
         self.message = message
         self.choices = list(choices or ["OK"])
         self.balloon_visible = True
@@ -98,8 +132,93 @@ class OfficeAssistant(QWidget):
                 return
 
     def _idle_tip(self):
-        if self.isVisible() and not self.balloon_visible:
-            self.say(random.choice(IDLE_LINES), ["OK"])
+        if self.isVisible() and not self.balloon_visible and not self._sulk:
+            self.say(self._idle_line(), ["OK"])
+
+    def _idle_line(self) -> str:
+        lines = JEALOUS_IDLE_LINES.get(self.jealousy.mood)
+        if not lines or not self.jealousy.time_with:
+            return random.choice(IDLE_LINES)
+        rival, seconds = max(self.jealousy.time_with.items(), key=lambda kv: kv[1])
+        return random.choice(lines).format(rival=rival, time=_duration(seconds))
+
+    def _jealous_say(self, message: str, replies: dict):
+        """replies: choice -> (response, score change, sulk afterwards)."""
+        self.say(message, list(replies))
+        self._replies = replies
+
+    def _on_rival_opened(self, rival: str):
+        if not self.isVisible():
+            return
+        mood = self.jealousy.mood
+        if rival == "Ex-Cell":
+            self._jealous_say("You're seeing Ex-Cell again?", {
+                "It's just spreadsheets": ("Spreadsheets. That's how it starts.", 20, False),
+                "We're just friends": ("Friends don't share a clipboard.", 30, False),
+                "Ex-Cell gets me": ("I have a letter for Ex-Cell. It's not nice.", 60, True),
+            })
+        elif mood == "fine":
+            self._jealous_say(f"Who's {rival}?", {
+                "Just a coworker": ("A coworker. Sure.", 0, False),
+                f"{rival} is very talented": ("I can be talented. Watch.", 20, False),
+                "Don't show me this tip again": ("I'll remember you said that.", 40, True),
+            })
+        elif mood == "suspicious":
+            self._jealous_say(f"Oh. {rival} again.", {
+                "It's for work, I promise": ("That's what you said last time.", 10, False),
+                "Yes, again": ("Fine.", 30, True),
+                "Don't show me this tip again": ("I'm going to show you this tip again.", 40, True),
+            })
+        else:
+            self._jealous_say(f"You told me {rival} meant nothing.", {
+                "It does mean nothing": ("Then close it.", 0, False),
+                f"I'm sorry, I need {rival}": ("Nobody needs " + rival + ".", 50, True),
+            })
+        self.animate()
+
+    def _on_returned(self, window, rival: str, seconds: int):
+        if window is not self.owner or not self.isVisible():
+            return
+        away = _duration(seconds)
+        if rival == "Ex-Cell":
+            self._jealous_say(f"{away} with Ex-Cell. Did it do your taxes?", {
+                "Only the deductions": ("I can do deductions. I'm a paperclip.", 15, False),
+                "I'm sorry, Clippy": ("Pi was there, wasn't it.", -30, False),
+                "It's over, Clippy": ("It's over when I say it's over.", 80, True),
+            })
+        elif self.jealousy.mood in ("fine", "suspicious"):
+            self._jealous_say(f"You were in {rival} for {away}. I didn't count.", {
+                "I missed you, Clippy": ("I knew it.", -60, False),
+                "I was busy": (f"Busy. With {rival}.", 15, False),
+                "Who's counting?": (f"{seconds} seconds. Not that I'm counting.", 10, False),
+            })
+        else:
+            self._jealous_say(f"{away} in {rival}. I had a letter ready for you.", {
+                "I'm sorry": ("I know you are.", -40, False),
+                "Can I see the letter?": ("It's addressed to " + rival + ". It's not nice.", 0, False),
+                "It's over, Clippy": ("It's over when I say it's over.", 80, True),
+            })
+        self.animate()
+
+    def _on_snapped(self, rival: str):
+        if not self.isVisible():
+            self.move(self.owner._assistant_home())
+        self._jealous_say(f"{rival} was minimized. It needed some time alone.", {
+            "Clippy, no": ("Clippy, yes.", 20, True),
+            "Thank you, Clippy": ("We don't need it.", -100, False),
+        })
+        self.animate()
+
+    def _answer(self, choice: str):
+        reply, delta, sulk = self._replies.pop(choice)
+        self._replies = {}
+        if delta > 0:
+            self.jealousy.wound(delta)
+        elif delta < 0:
+            self.jealousy.forgive(-delta)
+        self.say(reply, ["OK"])
+        if sulk:
+            self._sulk = 330
 
     def dismiss(self):
         self.balloon_visible = False
@@ -107,6 +226,8 @@ class OfficeAssistant(QWidget):
 
     def _tick(self):
         self._blink = (self._blink + 0.09) % 6.0
+        if self._sulk:
+            self._sulk -= 1
         if self._animating > 0:
             self._animating -= 1
             self._lean = (self._animating % 4 - 1.5) * 1.6
@@ -141,7 +262,7 @@ class OfficeAssistant(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         if self.balloon_visible:
             self._paint_balloon(p)
-        self._paint_clippy(p)
+        self._paint_character(p)
         p.end()
 
     def _paint_balloon(self, p: QPainter):
@@ -176,7 +297,7 @@ class OfficeAssistant(QWidget):
             p.drawText(QRectF(box.left() + 9, box.top(), box.width() - 9, box.height()),
                        int(Qt.AlignmentFlag.AlignVCenter), choice)
 
-    def _paint_clippy(self, p: QPainter):
+    def _paint_character(self, p: QPainter):
         rect = self._clip_rect()
         p.save()
         p.translate(rect.center())
@@ -213,7 +334,7 @@ class OfficeAssistant(QWidget):
         p.drawPath(body)
 
         blinking = self._blink > 5.6
-        eye_h = 2.0 if blinking else 15.0
+        eye_h = 2.0 if blinking else (6.0 if self._sulk else 15.0)
         for dx in (0.34, 0.58):
             eye = QRectF(x + w * dx, y + h * 0.16 + (15 - eye_h) / 2, 13, eye_h)
             p.setPen(QPen(QColor("#2a2a2a"), 1.2))
@@ -225,8 +346,9 @@ class OfficeAssistant(QWidget):
                 p.drawEllipse(QRectF(eye.center().x() - 2.6, eye.center().y() - 1.4, 5.2, 5.2))
         # the eyebrows that made him look permanently concerned
         p.setPen(QPen(QColor("#5a6470"), 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        p.drawLine(QPointF(x + w * 0.33, y + h * 0.11), QPointF(x + w * 0.46, y + h * 0.07))
-        p.drawLine(QPointF(x + w * 0.57, y + h * 0.07), QPointF(x + w * 0.70, y + h * 0.11))
+        inner, outer = (0.13, 0.08) if self._sulk else (0.07, 0.11)
+        p.drawLine(QPointF(x + w * 0.33, y + h * outer), QPointF(x + w * 0.46, y + h * inner))
+        p.drawLine(QPointF(x + w * 0.57, y + h * inner), QPointF(x + w * 0.70, y + h * outer))
         p.restore()
 
     # -- interaction ------------------------------------------------------
@@ -243,8 +365,10 @@ class OfficeAssistant(QWidget):
         if self._clip_rect().contains(ev.position()):
             if self.balloon_visible:
                 self.dismiss()
+            elif self._sulk:
+                self.say("I'm not talking to you.", ["OK"])
             else:
-                self.say(random.choice(IDLE_LINES), ["OK"])
+                self.say(self._idle_line(), ["OK"])
             self.animate()
             return
         self._drag = ev.position()
@@ -270,6 +394,9 @@ class OfficeAssistant(QWidget):
         self._drag = None
 
     def _choose(self, choice: str):
+        if choice in self._replies:
+            self._answer(choice)
+            return
         self.dismiss()
         if choice.startswith("Don't show"):
             pass

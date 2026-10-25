@@ -80,7 +80,7 @@ class VfsFileDialog(QDialog):
                 item.setData(Qt.ItemDataRole.UserRole, ("folder", child.id))
                 self.list.addItem(item)
             elif child.kind in self.kinds:
-                key = KIND_ICONS.get(child.kind, "text_file")
+                key = "excell" if vfs_mod.is_workbook(child) else KIND_ICONS.get(child.kind, "text_file")
                 item = QListWidgetItem(icons.icon(key, 20), child.name)
                 item.setData(Qt.ItemDataRole.UserRole, ("file", child.id))
                 self.list.addItem(item)

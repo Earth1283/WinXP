@@ -46,6 +46,7 @@ KIND_TYPES = {
 EXT_TYPES = {
     ".txt": "Text Document", ".log": "Text Document", ".ini": "Configuration Settings",
     ".rtf": "Rich Text Document", ".doc": "Microsoft Word Document",
+    ".xls": "Microsoft Excel Worksheet",
     ".bmp": "Bitmap Image", ".png": "PNG Image", ".jpg": "JPEG Image",
     ".jpeg": "JPEG Image", ".gif": "GIF Image",
     ".wav": "Wave Sound", ".mp3": "MP3 Format Sound", ".wma": "Windows Media Audio file",
@@ -79,6 +80,8 @@ def icon_key(node) -> str:
         return "my_documents"
     if node.id == vfs_mod.vfs.recycle_id:
         return "recycle_bin_full" if vfs_mod.vfs.children_of(node.id) else "recycle_bin"
+    if vfs_mod.is_workbook(node):
+        return "excell"
     return KIND_ICONS.get(node.kind, "text_file")
 
 

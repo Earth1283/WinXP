@@ -78,7 +78,7 @@ class DesktopIcon(QWidget):
         elif self.node_id == vfs_mod.vfs.recycle_id:
             key = "recycle_bin"
         else:
-            key = FILE_ICONS.get(node.kind, "text_file")
+            key = "excell" if vfs_mod.is_workbook(node) else FILE_ICONS.get(node.kind, "text_file")
         self.icon_label.setPixmap(icons.icon(key, 40).pixmap(40, 40))
         self.text_label.setText(vfs_mod.display_name(node))
         self._paint_selection()
@@ -358,7 +358,7 @@ class Desktop(QWidget):
         elif node.kind == vfs_mod.FOLDER:
             self._launch(f"explorer:{node_id}")
         elif node.kind == vfs_mod.TEXT:
-            self._launch(f"notepad:{node_id}")
+            self._launch(f"excell:{node_id}" if vfs_mod.is_workbook(node) else f"notepad:{node_id}")
         elif node.kind == vfs_mod.RICH:
             self._launch(f"mword:{node_id}")
         elif node.kind == vfs_mod.IMAGE:

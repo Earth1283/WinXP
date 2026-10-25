@@ -802,7 +802,7 @@ class ExplorerWindow(XPWindow):
         if node.kind == vfs_mod.FOLDER:
             self._navigate(node_id)
         elif node.kind == vfs_mod.TEXT:
-            launch(self.wm, f"notepad:{node_id}")
+            launch(self.wm, f"excell:{node_id}" if vfs_mod.is_workbook(node) else f"notepad:{node_id}")
         elif node.kind == vfs_mod.RICH:
             launch(self.wm, f"mword:{node_id}")
         elif node.kind == vfs_mod.IMAGE:
@@ -1104,6 +1104,8 @@ class ExplorerWindow(XPWindow):
 
     @staticmethod
     def _app_for(node):
+        if vfs_mod.is_workbook(node):
+            return "excell"
         return {vfs_mod.TEXT: "notepad", vfs_mod.RICH: "mword", vfs_mod.IMAGE: "paint",
                 vfs_mod.AUDIO: "wmp", vfs_mod.VIDEO: "wmp"}.get(node.kind, "notepad")
 
